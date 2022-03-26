@@ -16,7 +16,7 @@ impl Display for OrStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}",
+            "({})",
             self.operands
                 .iter()
                 .map(|operand| format!("{}", operand))

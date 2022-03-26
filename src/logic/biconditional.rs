@@ -15,7 +15,7 @@ impl BiconditionalStatement {
 
 impl Display for BiconditionalStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ⟷ {}", self.lhs, self.rhs)
+        write!(f, "({} ⟷ {})", self.lhs, self.rhs)
     }
 }
 
