@@ -1,30 +1,22 @@
-use crate::logic::Statement;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
-pub struct Formula {
+pub struct Object {
     name: String,
-    args: Vec<Box<dyn Statement>>,
+    args: Vec<Object>,
 }
 
-impl Formula {
-    pub fn new(name: String, args: Vec<Box<dyn Statement>>) -> Self {
+impl Object {
+    pub fn new(name: String, args: Vec<Object>) -> Self {
         Self { name, args }
     }
 
     pub fn with_name(name: String) -> Self {
         Self::new(name, Vec::new())
     }
-
-    pub fn is_predicate(&self) -> bool {
-        match self.name.chars().next() {
-            Some(c) => c.is_uppercase(),
-            None => false,
-        }
-    }
 }
 
-impl Display for Formula {
+impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.args.len() {
             0 => write!(f, "{}", self.name),
@@ -40,5 +32,3 @@ impl Display for Formula {
         }
     }
 }
-
-impl Statement for Formula {}

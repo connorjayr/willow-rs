@@ -1,4 +1,5 @@
 use crate::logic::Statement;
+use crate::parse::parse;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
@@ -25,7 +26,7 @@ impl Error for TreeError {}
 struct Node {
     id: usize,
     tree: Arc<Mutex<TruthTree>>,
-    statement: Option<Box<dyn Statement>>,
+    statement: Option<Statement>,
     premise: bool,
     parent: Option<usize>,
     children: Vec<usize>,
