@@ -50,7 +50,9 @@ impl Display for Statement {
                     write!(f, "{}({})", predicate, args)
                 }
             },
-            Statement::And { operands } => write!(
+            Statement::Biconditional { lhs, rhs } => write!(f, "({} ⟷ {})", lhs, rhs),
+            Statement::Conditional { lhs, rhs } => write!(f, "({} → {})", lhs, rhs),
+            Statement::Conjunction { operands } => write!(
                 f,
                 "({})",
                 operands
@@ -59,9 +61,16 @@ impl Display for Statement {
                     .collect::<Vec<String>>()
                     .join(" ∧ ")
             ),
-            Statement::Biconditional { lhs, rhs } => write!(f, "({} ⟷ {})", lhs, rhs),
-            Statement::Conditional { lhs, rhs } => write!(f, "({} → {})", lhs, rhs),
             Statement::Contradiction => write!(f, "⊥"),
+            Statement::Disjunction { operands } => write!(
+                f,
+                "({})",
+                operands
+                    .iter()
+                    .map(|operand| format!("{}", operand))
+                    .collect::<Vec<String>>()
+                    .join(" ∨ ")
+            ),
             Statement::Existential {
                 variables,
                 proposition,
@@ -75,15 +84,6 @@ impl Display for Statement {
                 write!(f, "(∃{} {})", variables, proposition)
             }
             Statement::Negation { operand } => write!(f, "¬{}", operand),
-            Statement::Or { operands } => write!(
-                f,
-                "({})",
-                operands
-                    .iter()
-                    .map(|operand| format!("{}", operand))
-                    .collect::<Vec<String>>()
-                    .join(" ∨ ")
-            ),
             Statement::Tautology => write!(f, "⊤"),
             Statement::Universal {
                 variables,
