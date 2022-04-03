@@ -3,12 +3,9 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum Statement {
-    Atomic {
+    Atom {
         predicate: String,
         args: Vec<Object>,
-    },
-    And {
-        operands: Vec<Box<Statement>>,
     },
     Biconditional {
         lhs: Box<Statement>,
@@ -18,16 +15,19 @@ pub enum Statement {
         lhs: Box<Statement>,
         rhs: Box<Statement>,
     },
+    Conjunction {
+        operands: Vec<Box<Statement>>,
+    },
     Contradiction,
+    Disjunction {
+        operands: Vec<Box<Statement>>,
+    },
     Existential {
         variables: Vec<Object>,
         proposition: Box<Statement>,
     },
-    Not {
+    Negation {
         operand: Box<Statement>,
-    },
-    Or {
-        operands: Vec<Box<Statement>>,
     },
     Tautology,
     Universal {
@@ -39,7 +39,7 @@ pub enum Statement {
 impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Statement::Atomic { predicate, args } => match args.len() {
+            Statement::Atom { predicate, args } => match args.len() {
                 0 => write!(f, "{}", predicate),
                 _ => {
                     let args = args
@@ -74,7 +74,7 @@ impl Display for Statement {
 
                 write!(f, "(∃{} {})", variables, proposition)
             }
-            Statement::Not { operand } => write!(f, "¬{}", operand),
+            Statement::Negation { operand } => write!(f, "¬{}", operand),
             Statement::Or { operands } => write!(
                 f,
                 "({})",

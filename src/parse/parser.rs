@@ -16,7 +16,7 @@ enum Operator {
     // And,
     Biconditional,
     Conditional,
-    // Not,
+    // Negation,
     // Or,
 }
 
@@ -119,13 +119,13 @@ fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let statement2 = statement2.unwrap();
     // Auto-reduce commutative statements
     match *statement2 {
-        Statement::Or { mut operands } => {
+        Statement::Disjunction { mut operands } => {
             operands.push(statement1);
-            Ok((input, Box::new(Statement::Or { operands })))
+            Ok((input, Box::new(Statement::Disjunction { operands })))
         }
         _ => Ok((
             input,
-            Box::new(Statement::Or {
+            Box::new(Statement::Disjunction {
                 operands: vec![statement1, statement2],
             }),
         )),
@@ -143,13 +143,13 @@ fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
-            Statement::Or { mut operands } => {
+            Statement::Disjunction { mut operands } => {
                 operands.push(statement1);
-                Ok((input, Some(Box::new(Statement::Or { operands }))))
+                Ok((input, Some(Box::new(Statement::Disjunction { operands }))))
             }
             _ => Ok((
                 input,
-                Some(Box::new(Statement::Or {
+                Some(Box::new(Statement::Disjunction {
                     operands: vec![statement1, statement2],
                 })),
             )),
@@ -165,13 +165,13 @@ fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let statement2 = statement2.unwrap();
     // Auto-reduce commutative statements
     match *statement2 {
-        Statement::And { mut operands } => {
+        Statement::Conjunction { mut operands } => {
             operands.push(statement1);
-            Ok((input, Box::new(Statement::And { operands })))
+            Ok((input, Box::new(Statement::Conjunction { operands })))
         }
         _ => Ok((
             input,
-            Box::new(Statement::And {
+            Box::new(Statement::Conjunction {
                 operands: vec![statement1, statement2],
             }),
         )),
@@ -189,13 +189,13 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
-            Statement::And { mut operands } => {
+            Statement::Conjunction { mut operands } => {
                 operands.push(statement1);
-                Ok((input, Some(Box::new(Statement::And { operands }))))
+                Ok((input, Some(Box::new(Statement::Conjunction { operands }))))
             }
             _ => Ok((
                 input,
-                Some(Box::new(Statement::And {
+                Some(Box::new(Statement::Conjunction {
                     operands: vec![statement1, statement2],
                 })),
             )),
@@ -205,7 +205,7 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 
 fn unary_expression(input: &str) -> IResult<&str, Box<Statement>> {
     alt((
-        not_expression,
+        Negation_expression,
         universal_expression,
         existence_expression,
         delimited(ws(char('(')), expression_generator, ws(char(')'))),
@@ -213,15 +213,20 @@ fn unary_expression(input: &str) -> IResult<&str, Box<Statement>> {
     ))(input)
 }
 
-fn not_expression(input: &str) -> IResult<&str, Box<Statement>> {
+fn Negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, inner_statement) = preceded(
-        alt((ws(tag("¬")), ws(tag("!")), ws(tag("~")), ws(tag("not")))),
+        alt((
+            ws(tag("¬")),
+            ws(tag("!")),
+            ws(tag("~")),
+            ws(tag("Negation")),
+        )),
         unary_expression,
     )(input)?;
 
     Ok((
         input,
-        Box::new(Statement::Not {
+        Box::new(Statement::Negation {
             operand: inner_statement,
         }),
     ))
@@ -264,14 +269,14 @@ fn predicate(input: &str) -> IResult<&str, Box<Statement>> {
     match args {
         Some(args) => Ok((
             input,
-            Box::new(Statement::Atomic {
+            Box::new(Statement::Atom {
                 predicate: String::from(predicate),
                 args,
             }),
         )),
         None => Ok((
             input,
-            Box::new(Statement::Atomic {
+            Box::new(Statement::Atom {
                 predicate: String::from(predicate),
                 args: vec![],
             }),
@@ -324,13 +329,13 @@ where
 fn test_parser() {
     assert_eq!(
         parse("   P and   Q  ").unwrap().to_string(),
-        Box::new(Statement::And {
+        Box::new(Statement::Conjunction {
             operands: vec![
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("P"),
                     args: vec![]
                 }),
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("Q"),
                     args: vec![]
                 })
@@ -341,25 +346,25 @@ fn test_parser() {
     assert_eq!(
         parse("(A or B) implies (C and D)").unwrap().to_string(),
         Box::new(Statement::Conditional {
-            lhs: Box::new(Statement::Or {
+            lhs: Box::new(Statement::Disjunction {
                 operands: vec![
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("A"),
                         args: vec![]
                     }),
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("B"),
                         args: vec![]
                     })
                 ]
             }),
-            rhs: Box::new(Statement::And {
+            rhs: Box::new(Statement::Conjunction {
                 operands: vec![
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("C"),
                         args: vec![]
                     }),
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("D"),
                         args: vec![]
                     })
@@ -370,13 +375,13 @@ fn test_parser() {
     );
     assert_eq!(
         parse("F(x) or G(y)").unwrap().to_string(),
-        Box::new(Statement::Or {
+        Box::new(Statement::Disjunction {
             operands: vec![
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("F"),
                     args: vec![Object::new(String::from("x"), vec![])]
                 }),
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("G"),
                     args: vec![Object::new(String::from("y"), vec![])]
                 })
@@ -386,13 +391,13 @@ fn test_parser() {
     );
     assert_eq!(
         parse("Node(x) and Node(parent(x))").unwrap().to_string(),
-        Box::new(Statement::And {
+        Box::new(Statement::Conjunction {
             operands: vec![
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("Node"),
                     args: vec![Object::new(String::from("x"), vec![])]
                 }),
-                Box::new(Statement::Atomic {
+                Box::new(Statement::Atom {
                     predicate: String::from("Node"),
                     args: vec![Object::new(
                         String::from("parent"),
@@ -410,13 +415,13 @@ fn test_parser() {
                 Object::new(String::from("x"), vec![]),
                 Object::new(String::from("y"), vec![])
             ],
-            proposition: Box::new(Statement::And {
+            proposition: Box::new(Statement::Conjunction {
                 operands: vec![
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("P"),
                         args: vec![Object::new(String::from("x"), vec![])]
                     }),
-                    Box::new(Statement::Atomic {
+                    Box::new(Statement::Atom {
                         predicate: String::from("P"),
                         args: vec![Object::new(String::from("y"), vec![])]
                     })
