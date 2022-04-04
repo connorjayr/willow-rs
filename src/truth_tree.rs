@@ -24,8 +24,9 @@ impl Error for TreeError {}
 
 struct Node {
     id: usize,
+    // FIXME: Arc should be replaced with Weak to prevent a memory cycle.
     tree: Arc<Mutex<TruthTree>>,
-    statement: Option<Statement>,
+    // statement: Option<Statement<'_>>,
     premise: bool,
     parent: Option<usize>,
     children: Vec<usize>,
@@ -36,7 +37,7 @@ impl Node {
         Self {
             id,
             tree,
-            statement: None,
+            // statement: None,
             premise: false,
             parent: None,
             children: Vec::new(),

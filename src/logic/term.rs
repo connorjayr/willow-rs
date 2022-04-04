@@ -5,12 +5,12 @@ use std::fmt::{self, Display, Formatter};
 ///
 /// The set of terms is inductively defined [here](https://en.wikipedia.org/wiki/First-order_logic#Terms).
 #[derive(Debug)]
-pub struct Term {
-    name: String,
-    args: Vec<Term>,
+pub struct Term<'a> {
+    name: &'a str,
+    args: Vec<Term<'a>>,
 }
 
-impl Term {
+impl<'a> Term<'a> {
     /// Constructs a new [Term].
     ///
     /// # Examples
@@ -21,11 +21,8 @@ impl Term {
     /// let term = Term::new("f", vec![Term::var("x"), Term::var("y")]);
     /// assert_eq!("f(x,y)", format!("{}", term));
     /// ```
-    pub fn new(name: impl Into<String>, args: Vec<Term>) -> Self {
-        Self {
-            name: name.into(),
-            args,
-        }
+    pub fn new(name: &'a str, args: Vec<Term<'a>>) -> Self {
+        Self { name, args }
     }
 
     /// Constructs a new variable.
@@ -40,12 +37,12 @@ impl Term {
     /// let var = Term::var("x");
     /// assert_eq!("x", format!("{}", var));
     /// ```
-    pub fn var(name: impl Into<String>) -> Self {
+    pub fn var(name: &'a str) -> Self {
         Self::new(name, Vec::new())
     }
 }
 
-impl Display for Term {
+impl Display for Term<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.args.len() {
             0 => write!(f, "{}", self.name),
