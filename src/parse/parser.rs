@@ -44,17 +44,11 @@ fn expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
         Some((nested_operation, statement2)) => match nested_operation {
             Operator::Conditional => Ok((
                 input,
-                Box::new(Statement::Conditional {
-                    lhs: statement1,
-                    rhs: statement2,
-                }),
+                Box::new(Statement::Conditional(statement1, statement2)),
             )),
             Operator::Biconditional => Ok((
                 input,
-                Box::new(Statement::Biconditional {
-                    lhs: statement1,
-                    rhs: statement2,
-                }),
+                Box::new(Statement::Biconditional(statement1, statement2)),
             )),
         },
     }
@@ -97,20 +91,14 @@ fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> 
                 input,
                 Some((
                     operation,
-                    Box::new(Statement::Conditional {
-                        lhs: statement1,
-                        rhs: statement2,
-                    }),
+                    Box::new(Statement::Conditional(statement1, statement2)),
                 )),
             )),
             Operator::Biconditional => Ok((
                 input,
                 Some((
                     operation,
-                    Box::new(Statement::Biconditional {
-                        lhs: statement1,
-                        rhs: statement2,
-                    }),
+                    Box::new(Statement::Biconditional(statement1, statement2)),
                 )),
             )),
         },
@@ -125,15 +113,13 @@ fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let statement2 = statement2.unwrap();
     // Auto-reduce commutative statements
     match *statement2 {
-        Statement::Disjunction { mut operands } => {
+        Statement::Disjunction(mut operands) => {
             operands.insert(0, statement1);
-            Ok((input, Box::new(Statement::Disjunction { operands })))
+            Ok((input, Box::new(Statement::Disjunction(operands))))
         }
         _ => Ok((
             input,
-            Box::new(Statement::Disjunction {
-                operands: vec![statement1, statement2],
-            }),
+            Box::new(Statement::Disjunction(vec![statement1, statement2])),
         )),
     }
 }
@@ -149,15 +135,15 @@ fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
-            Statement::Disjunction { mut operands } => {
+            Statement::Disjunction(mut operands) => {
                 operands.insert(0, statement1);
-                Ok((input, Some(Box::new(Statement::Disjunction { operands }))))
+                Ok((input, Some(Box::new(Statement::Disjunction(operands)))))
             }
             _ => Ok((
                 input,
-                Some(Box::new(Statement::Disjunction {
-                    operands: vec![statement1, statement2],
-                })),
+                Some(Box::new(Statement::Disjunction(vec![
+                    statement1, statement2,
+                ]))),
             )),
         },
     }
@@ -171,15 +157,13 @@ fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let statement2 = statement2.unwrap();
     // Auto-reduce commutative statements
     match *statement2 {
-        Statement::Conjunction { mut operands } => {
+        Statement::Conjunction(mut operands) => {
             operands.insert(0, statement1);
-            Ok((input, Box::new(Statement::Conjunction { operands })))
+            Ok((input, Box::new(Statement::Conjunction(operands))))
         }
         _ => Ok((
             input,
-            Box::new(Statement::Conjunction {
-                operands: vec![statement1, statement2],
-            }),
+            Box::new(Statement::Conjunction(vec![statement1, statement2])),
         )),
     }
 }
@@ -195,15 +179,15 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
-            Statement::Conjunction { mut operands } => {
+            Statement::Conjunction(mut operands) => {
                 operands.insert(0, statement1);
-                Ok((input, Some(Box::new(Statement::Conjunction { operands }))))
+                Ok((input, Some(Box::new(Statement::Conjunction(operands)))))
             }
             _ => Ok((
                 input,
-                Some(Box::new(Statement::Conjunction {
-                    operands: vec![statement1, statement2],
-                })),
+                Some(Box::new(Statement::Conjunction(vec![
+                    statement1, statement2,
+                ]))),
             )),
         },
     }
@@ -230,16 +214,11 @@ fn negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
         unary_expression,
     )(input)?;
 
-    Ok((
-        input,
-        Box::new(Statement::Negation {
-            operand: inner_statement,
-        }),
-    ))
+    Ok((input, Box::new(Statement::Negation(inner_statement))))
 }
 
 fn universal_expression(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (variables, inner_statement)) = preceded(
+    let (input, (vars, inner_statement)) = preceded(
         alt((ws(tag("∀")), ws(tag("forall")))),
         pair(object_list, unary_expression),
     )(input)?;
@@ -247,14 +226,14 @@ fn universal_expression(input: &str) -> IResult<&str, Box<Statement>> {
     Ok((
         input,
         Box::new(Statement::Universal {
-            variables,
-            proposition: inner_statement,
+            vars,
+            formula: inner_statement,
         }),
     ))
 }
 
 fn existence_expression(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (variables, inner_statement)) = preceded(
+    let (input, (vars, inner_statement)) = preceded(
         alt((ws(tag("∃")), ws(tag("exists")))),
         pair(object_list, unary_expression),
     )(input)?;
@@ -262,8 +241,8 @@ fn existence_expression(input: &str) -> IResult<&str, Box<Statement>> {
     Ok((
         input,
         Box::new(Statement::Existential {
-            variables,
-            proposition: inner_statement,
+            vars,
+            formula: inner_statement,
         }),
     ))
 }
@@ -336,104 +315,89 @@ fn test_parser() {
     // Expected results
     assert_eq!(
         parse("   P and   Q  ").unwrap().to_string(),
-        Box::new(Statement::Conjunction {
-            operands: vec![
-                Box::new(Statement::Atom {
-                    predicate: String::from("P"),
-                    args: vec![]
-                }),
-                Box::new(Statement::Atom {
-                    predicate: String::from("Q"),
-                    args: vec![]
-                })
-            ]
-        })
+        Box::new(Statement::Conjunction(vec![
+            Box::new(Statement::Atom {
+                predicate: String::from("P"),
+                args: vec![]
+            }),
+            Box::new(Statement::Atom {
+                predicate: String::from("Q"),
+                args: vec![]
+            })
+        ]))
         .to_string()
     );
     assert_eq!(
         parse("(A or B) implies (C and D)").unwrap().to_string(),
-        Box::new(Statement::Conditional {
-            lhs: Box::new(Statement::Disjunction {
-                operands: vec![
-                    Box::new(Statement::Atom {
-                        predicate: String::from("A"),
-                        args: vec![]
-                    }),
-                    Box::new(Statement::Atom {
-                        predicate: String::from("B"),
-                        args: vec![]
-                    })
-                ]
-            }),
-            rhs: Box::new(Statement::Conjunction {
-                operands: vec![
-                    Box::new(Statement::Atom {
-                        predicate: String::from("C"),
-                        args: vec![]
-                    }),
-                    Box::new(Statement::Atom {
-                        predicate: String::from("D"),
-                        args: vec![]
-                    })
-                ]
-            })
-        })
+        Box::new(Statement::Conditional(
+            Box::new(Statement::Disjunction(vec![
+                Box::new(Statement::Atom {
+                    predicate: String::from("A"),
+                    args: vec![]
+                }),
+                Box::new(Statement::Atom {
+                    predicate: String::from("B"),
+                    args: vec![]
+                })
+            ])),
+            Box::new(Statement::Conjunction(vec![
+                Box::new(Statement::Atom {
+                    predicate: String::from("C"),
+                    args: vec![]
+                }),
+                Box::new(Statement::Atom {
+                    predicate: String::from("D"),
+                    args: vec![]
+                })
+            ]))
+        ))
         .to_string()
     );
     assert_eq!(
         parse("F(x) or G(y)").unwrap().to_string(),
-        Box::new(Statement::Disjunction {
-            operands: vec![
-                Box::new(Statement::Atom {
-                    predicate: String::from("F"),
-                    args: vec![Term::new(String::from("x"), vec![])]
-                }),
-                Box::new(Statement::Atom {
-                    predicate: String::from("G"),
-                    args: vec![Term::new(String::from("y"), vec![])]
-                })
-            ]
-        })
+        Box::new(Statement::Disjunction(vec![
+            Box::new(Statement::Atom {
+                predicate: String::from("F"),
+                args: vec![Term::new(String::from("x"), vec![])]
+            }),
+            Box::new(Statement::Atom {
+                predicate: String::from("G"),
+                args: vec![Term::new(String::from("y"), vec![])]
+            })
+        ]))
         .to_string()
     );
     assert_eq!(
         parse("Node(x) and Node(parent(x))").unwrap().to_string(),
-        Box::new(Statement::Conjunction {
-            operands: vec![
-                Box::new(Statement::Atom {
-                    predicate: String::from("Node"),
-                    args: vec![Term::new(String::from("x"), vec![])]
-                }),
-                Box::new(Statement::Atom {
-                    predicate: String::from("Node"),
-                    args: vec![Term::new(
-                        String::from("parent"),
-                        vec![Term::new(String::from("x"), vec![])]
-                    )]
-                })
-            ]
-        })
+        Box::new(Statement::Conjunction(vec![
+            Box::new(Statement::Atom {
+                predicate: String::from("Node"),
+                args: vec![Term::new(String::from("x"), vec![])]
+            }),
+            Box::new(Statement::Atom {
+                predicate: String::from("Node"),
+                args: vec![Term::new(
+                    String::from("parent"),
+                    vec![Term::new(String::from("x"), vec![])]
+                )]
+            })
+        ]))
         .to_string()
     );
     assert_eq!(
         parse("forall x, y ( P(x) and P(y) )").unwrap().to_string(),
         Box::new(Statement::Universal {
-            variables: vec![
-                Term::new(String::from("x"), vec![]),
-                Term::new(String::from("y"), vec![])
-            ],
-            proposition: Box::new(Statement::Conjunction {
-                operands: vec![
-                    Box::new(Statement::Atom {
-                        predicate: String::from("P"),
-                        args: vec![Term::new(String::from("x"), vec![])]
-                    }),
-                    Box::new(Statement::Atom {
-                        predicate: String::from("P"),
-                        args: vec![Term::new(String::from("y"), vec![])]
-                    })
-                ]
-            })
+            vars: vec![String::from("x"), String::from("y")],
+            formula: Box::new(Statement::Conjunction(vec![
+                Box::new(Statement::Atom {
+                    predicate: String::from("P"),
+                    args: vec![Term::new(String::from("x"), vec![])]
+                }),
+                Box::new(Statement::Atom {
+                    predicate: String::from("P"),
+                    args: vec![Term::new(String::from("y"), vec![])]
+                })
+            ]))
         })
         .to_string()
     );
@@ -442,28 +406,26 @@ fn test_parser() {
             .unwrap()
             .to_string(),
         Box::new(Statement::Universal {
-            variables: vec![Object::new(String::from("x"), vec![])],
-            proposition: Box::new(Statement::Existential {
-                variables: vec![Object::new(String::from("y"), vec![])],
-                proposition: Box::new(Statement::Conjunction {
-                    operands: vec![
-                        Box::new(Statement::Atom {
-                            predicate: String::from("P"),
-                            args: vec![Object::new(String::from("x"), vec![])]
-                        }),
-                        Box::new(Statement::Atom {
-                            predicate: String::from("P"),
-                            args: vec![Object::new(String::from("y"), vec![])]
-                        }),
-                        Box::new(Statement::Atom {
-                            predicate: String::from("Q"),
-                            args: vec![
-                                Object::new(String::from("x"), vec![]),
-                                Object::new(String::from("y"), vec![])
-                            ]
-                        })
-                    ]
-                })
+            vars: vec![Object::new(String::from("x"), vec![])],
+            formula: Box::new(Statement::Existential {
+                vars: vec![Object::new(String::from("y"), vec![])],
+                formula: Box::new(Statement::Conjunction(vec![
+                    Box::new(Statement::Atom {
+                        predicate: String::from("P"),
+                        args: vec![Object::new(String::from("x"), vec![])]
+                    }),
+                    Box::new(Statement::Atom {
+                        predicate: String::from("P"),
+                        args: vec![Object::new(String::from("y"), vec![])]
+                    }),
+                    Box::new(Statement::Atom {
+                        predicate: String::from("Q"),
+                        args: vec![
+                            Object::new(String::from("x"), vec![]),
+                            Object::new(String::from("y"), vec![])
+                        ]
+                    })
+                ]))
             })
         })
         .to_string()
@@ -473,30 +435,28 @@ fn test_parser() {
             .unwrap()
             .to_string(),
         Box::new(Statement::Universal {
-            variables: vec![Object::new(String::from("n"), vec![])],
-            proposition: Box::new(Statement::Existential {
-                variables: vec![Object::new(String::from("x"), vec![])],
-                proposition: Box::new(Statement::Conjunction {
-                    operands: vec![
-                        Box::new(Statement::Atom {
-                            predicate: String::from("GreaterThan"),
-                            args: vec![
-                                Object::new(String::from("x"), vec![]),
-                                Object::new(String::from("n"), vec![])
-                            ]
-                        }),
-                        Box::new(Statement::Atom {
-                            predicate: String::from("LessThan"),
-                            args: vec![
-                                Object::new(String::from("x"), vec![]),
-                                Object::new(
-                                    String::from("succ"),
-                                    vec![Object::new(String::from("n"), vec![])]
-                                )
-                            ]
-                        })
-                    ]
-                })
+            vars: vec![Object::new(String::from("n"), vec![])],
+            formula: Box::new(Statement::Existential {
+                vars: vec![Object::new(String::from("x"), vec![])],
+                formula: Box::new(Statement::Conjunction(vec![
+                    Box::new(Statement::Atom {
+                        predicate: String::from("GreaterThan"),
+                        args: vec![
+                            Object::new(String::from("x"), vec![]),
+                            Object::new(String::from("n"), vec![])
+                        ]
+                    }),
+                    Box::new(Statement::Atom {
+                        predicate: String::from("LessThan"),
+                        args: vec![
+                            Object::new(String::from("x"), vec![]),
+                            Object::new(
+                                String::from("succ"),
+                                vec![Object::new(String::from("n"), vec![])]
+                            )
+                        ]
+                    })
+                ]))
             })
         })
         .to_string()
