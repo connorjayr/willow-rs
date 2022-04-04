@@ -3,29 +3,29 @@ use std::fmt::{self, Display, Formatter};
 
 /// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
 #[derive(Debug)]
-pub enum Statement {
+pub enum Statement<'a> {
     Atom {
-        predicate: String,
-        args: Vec<Term>,
+        predicate: &'a str,
+        args: Vec<Term<'a>>,
     },
-    Biconditional(Box<Statement>, Box<Statement>),
-    Conditional(Box<Statement>, Box<Statement>),
-    Conjunction(Vec<Statement>),
+    Biconditional(Box<Statement<'a>>, Box<Statement<'a>>),
+    Conditional(Box<Statement<'a>>, Box<Statement<'a>>),
+    Conjunction(Vec<Statement<'a>>),
     Contradiction,
-    Disjunction(Vec<Statement>),
+    Disjunction(Vec<Statement<'a>>),
     Existential {
-        vars: Vec<String>,
-        formula: Box<Statement>,
+        vars: Vec<&'a str>,
+        formula: Box<Statement<'a>>,
     },
-    Negation(Box<Statement>),
+    Negation(Box<Statement<'a>>),
     Tautology,
     Universal {
-        vars: Vec<String>,
-        formula: Box<Statement>,
+        vars: Vec<&'a str>,
+        formula: Box<Statement<'a>>,
     },
 }
 
-impl Display for Statement {
+impl Display for Statement<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Statement::Atom { predicate, args } => match args.len() {
