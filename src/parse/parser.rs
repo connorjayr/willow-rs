@@ -120,7 +120,7 @@ fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     // Auto-reduce commutative statements
     match *statement2 {
         Statement::Disjunction { mut operands } => {
-            operands.push(statement1);
+            operands.insert(0, statement1);
             Ok((input, Box::new(Statement::Disjunction { operands })))
         }
         _ => Ok((
@@ -144,7 +144,7 @@ fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
             Statement::Disjunction { mut operands } => {
-                operands.push(statement1);
+                operands.insert(0, statement1);
                 Ok((input, Some(Box::new(Statement::Disjunction { operands }))))
             }
             _ => Ok((
@@ -166,7 +166,7 @@ fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     // Auto-reduce commutative statements
     match *statement2 {
         Statement::Conjunction { mut operands } => {
-            operands.push(statement1);
+            operands.insert(0, statement1);
             Ok((input, Box::new(Statement::Conjunction { operands })))
         }
         _ => Ok((
@@ -190,7 +190,7 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         Some(statement2) => match *statement2 {
             // Auto-reduce commutative statements
             Statement::Conjunction { mut operands } => {
-                operands.push(statement1);
+                operands.insert(0, statement1);
                 Ok((input, Some(Box::new(Statement::Conjunction { operands }))))
             }
             _ => Ok((
@@ -205,7 +205,7 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 
 fn unary_expression(input: &str) -> IResult<&str, Box<Statement>> {
     alt((
-        Negation_expression,
+        negation_expression,
         universal_expression,
         existence_expression,
         delimited(ws(char('(')), expression_generator, ws(char(')'))),
@@ -213,7 +213,7 @@ fn unary_expression(input: &str) -> IResult<&str, Box<Statement>> {
     ))(input)
 }
 
-fn Negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
+fn negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, inner_statement) = preceded(
         alt((
             ws(tag("¬")),
@@ -327,6 +327,7 @@ where
 
 #[test]
 fn test_parser() {
+    // Expected results
     assert_eq!(
         parse("   P and   Q  ").unwrap().to_string(),
         Box::new(Statement::Conjunction {
@@ -430,5 +431,74 @@ fn test_parser() {
         })
         .to_string()
     );
-    println!("{}", parse("forall x, y ( P(x) and P(y) )").unwrap());
+    assert_eq!(
+        parse("forall x exists y ( P(x) and P(y) and Q(x, y) )")
+            .unwrap()
+            .to_string(),
+        Box::new(Statement::Universal {
+            variables: vec![Object::new(String::from("x"), vec![])],
+            proposition: Box::new(Statement::Existential {
+                variables: vec![Object::new(String::from("y"), vec![])],
+                proposition: Box::new(Statement::Conjunction {
+                    operands: vec![
+                        Box::new(Statement::Atom {
+                            predicate: String::from("P"),
+                            args: vec![Object::new(String::from("x"), vec![])]
+                        }),
+                        Box::new(Statement::Atom {
+                            predicate: String::from("P"),
+                            args: vec![Object::new(String::from("y"), vec![])]
+                        }),
+                        Box::new(Statement::Atom {
+                            predicate: String::from("Q"),
+                            args: vec![
+                                Object::new(String::from("x"), vec![]),
+                                Object::new(String::from("y"), vec![])
+                            ]
+                        })
+                    ]
+                })
+            })
+        })
+        .to_string()
+    );
+    assert_eq!(
+        parse("forall n exists x (GreaterThan(x, n) and LessThan(x, succ(n)))")
+            .unwrap()
+            .to_string(),
+        Box::new(Statement::Universal {
+            variables: vec![Object::new(String::from("n"), vec![])],
+            proposition: Box::new(Statement::Existential {
+                variables: vec![Object::new(String::from("x"), vec![])],
+                proposition: Box::new(Statement::Conjunction {
+                    operands: vec![
+                        Box::new(Statement::Atom {
+                            predicate: String::from("GreaterThan"),
+                            args: vec![
+                                Object::new(String::from("x"), vec![]),
+                                Object::new(String::from("n"), vec![])
+                            ]
+                        }),
+                        Box::new(Statement::Atom {
+                            predicate: String::from("LessThan"),
+                            args: vec![
+                                Object::new(String::from("x"), vec![]),
+                                Object::new(
+                                    String::from("succ"),
+                                    vec![Object::new(String::from("n"), vec![])]
+                                )
+                            ]
+                        })
+                    ]
+                })
+            })
+        })
+        .to_string()
+    );
+
+    // Expected errors
+    assert_eq!(
+        parse("a or b").expect_err("Objects should not be alone in propositions"),
+        Error::new("a or b", ErrorKind::OneOf)
+    );
 }
