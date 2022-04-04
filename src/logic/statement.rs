@@ -1,43 +1,32 @@
-use crate::logic::Object;
-use std::fmt::Display;
+use crate::logic::Term;
+use std::fmt::{self, Display, Formatter};
 
+/// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
 #[derive(Debug)]
 pub enum Statement {
     Atom {
         predicate: String,
-        args: Vec<Object>,
+        args: Vec<Term>,
     },
-    Biconditional {
-        lhs: Box<Statement>,
-        rhs: Box<Statement>,
-    },
-    Conditional {
-        lhs: Box<Statement>,
-        rhs: Box<Statement>,
-    },
-    Conjunction {
-        operands: Vec<Box<Statement>>,
-    },
+    Biconditional(Box<Statement>, Box<Statement>),
+    Conditional(Box<Statement>, Box<Statement>),
+    Conjunction(Vec<Statement>),
     Contradiction,
-    Disjunction {
-        operands: Vec<Box<Statement>>,
-    },
+    Disjunction(Vec<Statement>),
     Existential {
-        variables: Vec<Object>,
-        proposition: Box<Statement>,
+        vars: Vec<String>,
+        formula: Box<Statement>,
     },
-    Negation {
-        operand: Box<Statement>,
-    },
+    Negation(Box<Statement>),
     Tautology,
     Universal {
-        variables: Vec<Object>,
-        proposition: Box<Statement>,
+        vars: Vec<String>,
+        formula: Box<Statement>,
     },
 }
 
 impl Display for Statement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Statement::Atom { predicate, args } => match args.len() {
                 0 => write!(f, "{}", predicate),
@@ -50,9 +39,9 @@ impl Display for Statement {
                     write!(f, "{}({})", predicate, args)
                 }
             },
-            Statement::Biconditional { lhs, rhs } => write!(f, "({} ⟷ {})", lhs, rhs),
-            Statement::Conditional { lhs, rhs } => write!(f, "({} → {})", lhs, rhs),
-            Statement::Conjunction { operands } => write!(
+            Statement::Biconditional(left, right) => write!(f, "({} ⟷ {})", left, right),
+            Statement::Conditional(left, right) => write!(f, "({} → {})", left, right),
+            Statement::Conjunction(operands) => write!(
                 f,
                 "({})",
                 operands
@@ -62,7 +51,7 @@ impl Display for Statement {
                     .join(" ∧ ")
             ),
             Statement::Contradiction => write!(f, "⊥"),
-            Statement::Disjunction { operands } => write!(
+            Statement::Disjunction(operands) => write!(
                 f,
                 "({})",
                 operands
@@ -71,31 +60,25 @@ impl Display for Statement {
                     .collect::<Vec<String>>()
                     .join(" ∨ ")
             ),
-            Statement::Existential {
-                variables,
-                proposition,
-            } => {
-                let variables = variables
+            Statement::Existential { vars, formula } => {
+                let vars = vars
                     .iter()
-                    .map(|variable| format!("{}", variable))
+                    .map(|var| var.to_string())
                     .collect::<Vec<String>>()
                     .join(",");
 
-                write!(f, "(∃{} {})", variables, proposition)
+                write!(f, "(∃{} {})", vars, formula)
             }
-            Statement::Negation { operand } => write!(f, "¬{}", operand),
+            Statement::Negation(operand) => write!(f, "¬{}", operand),
             Statement::Tautology => write!(f, "⊤"),
-            Statement::Universal {
-                variables,
-                proposition,
-            } => {
-                let variables = variables
+            Statement::Universal { vars, formula } => {
+                let vars = vars
                     .iter()
-                    .map(|variable| format!("{}", variable))
+                    .map(|var| var.to_string())
                     .collect::<Vec<String>>()
                     .join(",");
 
-                write!(f, "(∀{} {})", variables, proposition)
+                write!(f, "(∀{} {})", vars, formula)
             }
         }
     }

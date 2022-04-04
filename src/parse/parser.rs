@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::logic::*;
 
 use nom::{
@@ -20,14 +22,18 @@ enum Operator {
     // Or,
 }
 
-pub fn parse(text: &str) -> Result<Box<Statement>, Error<&str>> {
-    let parser_result = expression_generator(text);
-    match parser_result.finish() {
-        Err(err) => Err(err),
-        Ok((leftover_text, statement)) => match leftover_text.len() {
-            0 => Ok(statement),
-            _ => Err(Error::new(leftover_text, ErrorKind::Fail)),
-        },
+impl FromStr for Statement {
+    type Err = Error<usize>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parser_result = expression_generator(s);
+        match parser_result.finish() {
+            Err(err) => Err(err),
+            Ok((leftover_text, statement)) => match leftover_text.len() {
+                0 => Ok(statement),
+                _ => Err(Error::new(leftover_text, ErrorKind::Fail)),
+            },
+        }
     }
 }
 
@@ -284,17 +290,17 @@ fn predicate(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn object(input: &str) -> IResult<&str, Object> {
+fn object(input: &str) -> IResult<&str, Term> {
     let (input, name) = ws(function_symbol)(input)?;
     let (input, args) = opt(delimited(ws(char('(')), object_list, ws(char(')'))))(input)?;
 
     match args {
-        Some(args) => Ok((input, Object::new(String::from(name), args))),
-        None => Ok((input, Object::new(String::from(name), vec![]))),
+        Some(args) => Ok((input, Term::new(String::from(name), args))),
+        None => Ok((input, Term::new(String::from(name), vec![]))),
     }
 }
 
-fn object_list(input: &str) -> IResult<&str, Vec<Object>> {
+fn object_list(input: &str) -> IResult<&str, Vec<Term>> {
     separated_list1(char(','), ws(object))(input)
 }
 
@@ -380,11 +386,11 @@ fn test_parser() {
             operands: vec![
                 Box::new(Statement::Atom {
                     predicate: String::from("F"),
-                    args: vec![Object::new(String::from("x"), vec![])]
+                    args: vec![Term::new(String::from("x"), vec![])]
                 }),
                 Box::new(Statement::Atom {
                     predicate: String::from("G"),
-                    args: vec![Object::new(String::from("y"), vec![])]
+                    args: vec![Term::new(String::from("y"), vec![])]
                 })
             ]
         })
@@ -396,13 +402,13 @@ fn test_parser() {
             operands: vec![
                 Box::new(Statement::Atom {
                     predicate: String::from("Node"),
-                    args: vec![Object::new(String::from("x"), vec![])]
+                    args: vec![Term::new(String::from("x"), vec![])]
                 }),
                 Box::new(Statement::Atom {
                     predicate: String::from("Node"),
-                    args: vec![Object::new(
+                    args: vec![Term::new(
                         String::from("parent"),
-                        vec![Object::new(String::from("x"), vec![])]
+                        vec![Term::new(String::from("x"), vec![])]
                     )]
                 })
             ]
@@ -413,18 +419,18 @@ fn test_parser() {
         parse("forall x, y ( P(x) and P(y) )").unwrap().to_string(),
         Box::new(Statement::Universal {
             variables: vec![
-                Object::new(String::from("x"), vec![]),
-                Object::new(String::from("y"), vec![])
+                Term::new(String::from("x"), vec![]),
+                Term::new(String::from("y"), vec![])
             ],
             proposition: Box::new(Statement::Conjunction {
                 operands: vec![
                     Box::new(Statement::Atom {
                         predicate: String::from("P"),
-                        args: vec![Object::new(String::from("x"), vec![])]
+                        args: vec![Term::new(String::from("x"), vec![])]
                     }),
                     Box::new(Statement::Atom {
                         predicate: String::from("P"),
-                        args: vec![Object::new(String::from("y"), vec![])]
+                        args: vec![Term::new(String::from("y"), vec![])]
                     })
                 ]
             })

@@ -1,5 +1,5 @@
-mod object;
-mod statement;
+pub mod statement;
+pub mod term;
 
-pub use object::Object;
 pub use statement::Statement;
+pub use term::Term;
