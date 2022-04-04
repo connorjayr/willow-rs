@@ -1,5 +1,4 @@
 use crate::logic::Statement;
-use crate::parse::parse;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
