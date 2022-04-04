@@ -3,7 +3,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 #[derive(Debug)]
 enum TreeError {
@@ -24,8 +24,7 @@ impl Error for TreeError {}
 
 struct Node {
     id: usize,
-    // FIXME: Arc should be replaced with Weak to prevent a memory cycle.
-    tree: Arc<Mutex<TruthTree>>,
+    tree: Weak<Mutex<TruthTree>>,
     // statement: Option<Statement<'_>>,
     premise: bool,
     parent: Option<usize>,
@@ -33,7 +32,7 @@ struct Node {
 }
 
 impl Node {
-    pub fn new(id: usize, tree: Arc<Mutex<TruthTree>>) -> Self {
+    pub fn new(id: usize, tree: Weak<Mutex<TruthTree>>) -> Self {
         Self {
             id,
             tree,
@@ -45,11 +44,12 @@ impl Node {
     }
 
     pub fn add_child(&mut self, child_id: usize) -> Result<(), TreeError> {
-        let mut child = Node::new(child_id, Arc::clone(&self.tree));
+        let mut child = Node::new(child_id, Weak::clone(&self.tree));
         child.parent = Some(self.id);
 
         {
-            let mut tree = self.tree.lock().unwrap();
+            let tree = self.tree.upgrade().unwrap();
+            let mut tree = tree.lock().unwrap();
             match tree.nodes.entry(child_id) {
                 Entry::Occupied(_) => return Err(TreeError::NodeAlreadyExists { id: child_id }),
                 Entry::Vacant(entry) => entry.insert(child),
@@ -75,7 +75,7 @@ impl TruthTree {
         };
         let tree = Arc::new(Mutex::new(tree));
 
-        let root = Node::new(root_id, Arc::clone(&tree));
+        let root = Node::new(root_id, Arc::downgrade(&tree));
         {
             let mut tree = tree.lock().unwrap();
             tree.nodes.insert(root_id, root);
