@@ -25,10 +25,13 @@ pub enum Statement<'a> {
     },
 }
 
+// For implementations, we can use the shorthand
+use Statement::*;
+
 impl Display for Statement<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Atom { predicate, args } => match args.len() {
+            Atom { predicate, args } => match args.len() {
                 0 => write!(f, "{}", predicate),
                 _ => {
                     let args = args
@@ -39,9 +42,9 @@ impl Display for Statement<'_> {
                     write!(f, "{}({})", predicate, args)
                 }
             },
-            Statement::Biconditional(left, right) => write!(f, "({} ⟷ {})", left, right),
-            Statement::Conditional(left, right) => write!(f, "({} → {})", left, right),
-            Statement::Conjunction(operands) => write!(
+            Biconditional(left, right) => write!(f, "({} ⟷ {})", left, right),
+            Conditional(left, right) => write!(f, "({} → {})", left, right),
+            Conjunction(operands) => write!(
                 f,
                 "({})",
                 operands
@@ -50,8 +53,8 @@ impl Display for Statement<'_> {
                     .collect::<Vec<String>>()
                     .join(" ∧ ")
             ),
-            Statement::Contradiction => write!(f, "⊥"),
-            Statement::Disjunction(operands) => write!(
+            Contradiction => write!(f, "⊥"),
+            Disjunction(operands) => write!(
                 f,
                 "({})",
                 operands
@@ -60,7 +63,7 @@ impl Display for Statement<'_> {
                     .collect::<Vec<String>>()
                     .join(" ∨ ")
             ),
-            Statement::Existential { vars, formula } => {
+            Existential { vars, formula } => {
                 let vars = vars
                     .iter()
                     .map(|var| var.to_string())
@@ -69,9 +72,9 @@ impl Display for Statement<'_> {
 
                 write!(f, "(∃{} {})", vars, formula)
             }
-            Statement::Negation(operand) => write!(f, "¬{}", operand),
-            Statement::Tautology => write!(f, "⊤"),
-            Statement::Universal { vars, formula } => {
+            Negation(operand) => write!(f, "¬{}", operand),
+            Tautology => write!(f, "⊤"),
+            Universal { vars, formula } => {
                 let vars = vars
                     .iter()
                     .map(|var| var.to_string())
@@ -80,6 +83,25 @@ impl Display for Statement<'_> {
 
                 write!(f, "(∀{} {})", vars, formula)
             }
+        }
+    }
+}
+
+impl Statement<'_> {
+    pub fn is_literal(&self) -> bool {
+        match self {
+            Atom {
+                predicate: _,
+                args: _,
+            } => true,
+            Negation(operand) => matches!(
+                **operand,
+                Atom {
+                    predicate: _,
+                    args: _
+                }
+            ),
+            _ => false,
         }
     }
 }
