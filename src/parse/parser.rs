@@ -359,11 +359,11 @@ fn test_parser() {
         Statement::Disjunction(vec![
             Statement::Atom {
                 predicate: "F",
-                args: vec![Term::new("x", vec![])]
+                args: vec![Term::var("x")]
             },
             Statement::Atom {
                 predicate: "G",
-                args: vec![Term::new("y", vec![])]
+                args: vec![Term::var("y")]
             }
         ])
         .to_string()
@@ -375,11 +375,11 @@ fn test_parser() {
         Statement::Conjunction(vec![
             Statement::Atom {
                 predicate: "Node",
-                args: vec![Term::new("x", vec![])]
+                args: vec![Term::var("x")]
             },
             Statement::Atom {
                 predicate: "Node",
-                args: vec![Term::new("parent", vec![Term::new("x", vec![])])]
+                args: vec![Term::new("parent", vec![Term::var("x")])]
             }
         ])
         .to_string()
@@ -393,11 +393,11 @@ fn test_parser() {
             formula: Box::new(Statement::Conjunction(vec![
                 Statement::Atom {
                     predicate: "P",
-                    args: vec![Term::new("x", vec![])]
+                    args: vec![Term::var("x")]
                 },
                 Statement::Atom {
                     predicate: "P",
-                    args: vec![Term::new("y", vec![])]
+                    args: vec![Term::var("y")]
                 }
             ]))
         })
@@ -416,15 +416,15 @@ fn test_parser() {
                 formula: Box::new(Statement::Conjunction(vec![
                     Statement::Atom {
                         predicate: "P",
-                        args: vec![Term::new("x", vec![])]
+                        args: vec![Term::var("x")]
                     },
                     Statement::Atom {
                         predicate: "P",
-                        args: vec![Term::new("y", vec![])]
+                        args: vec![Term::var("y")]
                     },
                     Statement::Atom {
                         predicate: "Q",
-                        args: vec![Term::new("x", vec![]), Term::new("y", vec![])]
+                        args: vec![Term::var("x"), Term::var("y")]
                     }
                 ]))
             })
@@ -444,14 +444,11 @@ fn test_parser() {
                 formula: Box::new(Statement::Conjunction(vec![
                     Statement::Atom {
                         predicate: "GreaterThan",
-                        args: vec![Term::new("x", vec![]), Term::new("n", vec![])]
+                        args: vec![Term::var("x"), Term::var("n")]
                     },
                     Statement::Atom {
                         predicate: "LessThan",
-                        args: vec![
-                            Term::new("x", vec![]),
-                            Term::new("succ", vec![Term::new("n", vec![])])
-                        ]
+                        args: vec![Term::var("x"), Term::new("succ", vec![Term::var("n")])]
                     }
                 ]))
             })
