@@ -51,12 +51,12 @@ impl<'a> Term<'a> {
     /// # Examples
     ///
     /// ```
-    /// use willow::logic::Term;
+    /// use willow::logic::{Assignment, Term};
     ///
     /// let term1 = Term::new("f", vec![Term::var("x"), Term::var("y")]);
     /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
     ///
-    /// assert!(term1.unifies(term2, vec!["y"]));
+    /// assert!(term1.unifies(&term2, &vec!["y"]));
     /// ```
     pub fn unifies(&self, other: &Self, quantified_vars: &Vec<&str>) -> bool {
         let assignment = Assignment::new();
@@ -75,16 +75,32 @@ impl<'a> Term<'a> {
     /// # Examples
     ///
     /// ```
-    /// use willow::logic::Term;
+    /// use willow::logic::{Assignment, Term};
     ///
     /// let term1 = Term::new("f", vec![Term::var("x"), Term::var("y")]);
     /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
     ///
     /// let mut assignment = Assignment::new();
-    /// assignment.insert("y", term2.args.get(1).unwrap());
+    /// let z = Term::var("z");
+    /// assignment.insert("y", &z);
     ///
     /// assert_eq!(
     ///     Term::get_assignment(&term1, &term2, &vec!["y"], Assignment::new()).unwrap(),
+    ///     assignment
+    /// );
+    /// ```
+    ///
+    /// ```
+    /// use willow::logic::{Assignment, Term};
+    ///
+    /// let term1 = Term::var("x");
+    /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
+    ///
+    /// let mut assignment = Assignment::new();
+    /// assignment.insert("x", &term2);
+    ///
+    /// assert_eq!(
+    ///     Term::get_assignment(&term1, &term2, &vec!["x"], Assignment::new()).unwrap(),
     ///     assignment
     /// );
     /// ```
@@ -94,55 +110,41 @@ impl<'a> Term<'a> {
         quantified_vars: &Vec<&str>,
         mut assignment: Assignment<'a>,
     ) -> Result<Assignment<'a>, UnifyError<'a>> {
-        // Require structural equality
+        if first.args.len() == 0 && quantified_vars.contains(&first.name) {
+            // We are at a variable in `first`
+            let var = first.name;
+            // Try to assign var to the value
+            return match assignment.get(var) {
+                // Variable is not yet assigned => assign it
+                None => {
+                    assignment.insert(var, second);
+                    Ok(assignment)
+                }
+                // Variable is already assigned to this value => do nothing
+                Some(value) if *value == second => Ok(assignment),
+                // Variable has a conflicting assignment => return an error
+                Some(old) => Err(UnifyError::ConflictingAssignment {
+                    var,
+                    old,
+                    new: second,
+                }),
+            };
+        }
+        // first is either a constant or a function symbol, so it must exactly match second in name
+        // and arity
         if first.args.len() != second.args.len() {
-            return Err(UnifyError::StructureMismatch(assignment));
+            return Err(UnifyError::ArityMismatch(first, second));
         }
 
-        // We know the args are the same length
-        // assert_eq!(first.args.len(), second.args.len());
-
-        if first.args.len() == 0 {
-            // first is a possibly quantified object
-            // second is a constant object
-            let name = first.name;
-            if quantified_vars.contains(&name) {
-                // first is quantified
-                // Check for possible conflicting assignments
-                return match assignment.get(name) {
-                    // Variable is not yet assigned
-                    None => {
-                        assignment.insert(name, second);
-                        Ok(assignment)
-                    }
-                    // Variable is already assigned to this value
-                    Some(value) if *value == second => Ok(assignment),
-                    // Variable has a conflicting assignment
-                    Some(old) => Err(UnifyError::ConflictingAssignment {
-                        var: name,
-                        old,
-                        new: second,
-                    }),
-                };
-            } else {
-                // both are just constants, just check that they are the same
-                return match first.name == second.name {
-                    true => Ok(assignment),
-                    false => Err(UnifyError::NameMismatch(assignment)),
-                };
-            }
-        } else {
-            // Since there are args, this must be a function symbol.
-            // Function symbols must be the same for structural equivalence
-            if first.name != second.name {
-                return Err(UnifyError::NameMismatch(assignment));
-            }
-
-            // Unify each argument
-            for (a, b) in first.args.iter().zip(second.args.iter()) {
-                assignment = Term::get_assignment(a, b, quantified_vars, assignment)?;
-            }
+        if first.name != second.name {
+            return Err(UnifyError::NameMismatch(first, second));
         }
+
+        // Unify each argument
+        for (a, b) in first.args.iter().zip(second.args.iter()) {
+            assignment = Term::get_assignment(a, b, quantified_vars, assignment)?;
+        }
+
         Ok(assignment)
     }
 }
@@ -166,7 +168,7 @@ impl Display for Term<'_> {
 
 /// An assignment of variables in logic is a mapping from variables to constants. We represent this
 /// as a map from variable names to Term objects.
-type Assignment<'a> = HashMap<&'a str, &'a Term<'a>>;
+pub type Assignment<'a> = HashMap<&'a str, &'a Term<'a>>;
 
 #[derive(Debug)]
 pub enum UnifyError<'a> {
@@ -175,8 +177,8 @@ pub enum UnifyError<'a> {
         old: &'a Term<'a>,
         new: &'a Term<'a>,
     },
-    NameMismatch(Assignment<'a>),
-    StructureMismatch(Assignment<'a>),
+    NameMismatch(&'a Term<'a>, &'a Term<'a>),
+    ArityMismatch(&'a Term<'a>, &'a Term<'a>),
 }
 
 impl Display for UnifyError<'_> {
@@ -187,7 +189,20 @@ impl Display for UnifyError<'_> {
                 "Could not assign {} to {}; already assigned to {}",
                 var, old, new
             ),
-            _ => todo!(),
+            UnifyError::ArityMismatch(first, second) => {
+                write!(
+                    f,
+                    "{} and {} are constants with different arity.",
+                    first, second
+                )
+            }
+            UnifyError::NameMismatch(first, second) => {
+                write!(
+                    f,
+                    "{} and {} are constants with different names.",
+                    first, second
+                )
+            }
         }
     }
 }
