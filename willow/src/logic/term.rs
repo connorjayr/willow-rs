@@ -151,6 +151,9 @@ impl<'a> Term<'a> {
 
     /// Gets the set of constants used in this Term.
     ///
+    /// Gathers the set of all constants within a Term. If any variables from the vars argument
+    /// appear within a Term, it is not considered a constant since its value may still vary.
+    ///
     /// # Examples
     ///
     /// ```
@@ -183,7 +186,25 @@ impl<'a> Term<'a> {
     /// constants.extend(constant_array.iter());
     ///
     /// assert_eq!(term.get_constants(&[]), constants);
+    /// ```
     ///
+    /// ```
+    /// use willow::logic::Term;
+    /// use std::collections::HashSet;
+    ///
+    /// let term = Term::new(
+    ///     "f",
+    ///     vec![
+    ///         Term::new("g", vec![Term::var("x"), Term::var("y")]),
+    ///         Term::new("h", vec![Term::var("z"), Term::var("x")]),
+    ///     ],
+    /// );
+    ///
+    /// let constant_array = [Term::var("y"), Term::var("z")];
+    /// let mut constants = HashSet::new();
+    /// constants.extend(constant_array.iter());
+    ///
+    /// assert_eq!(term.get_constants(&["x"]), constants);
     /// ```
     pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
         let mut constants = HashSet::new();
