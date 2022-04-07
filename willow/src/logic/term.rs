@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
 };
 
@@ -67,25 +67,41 @@ impl<'a> Term<'a> {
         self.args.len()
     }
 
-    /// Checks if the two terms can unify. Two terms are unifiable if they have the same structure
-    /// and all constants within the terms match. The first term can be optionally quantified via
-    /// the `quantified_vars` argument. Any variable in the `quantified_vars` argument acts as a
-    /// wildcard during the unification process. However, a variable can not be unified twice during
-    /// unification.
+    /// Checks if this Term can unify with another Term.
+    ///
+    /// Two Terms are unifiable if all constants match with the same name and arity, and each
+    /// variable unifies with at least one corresponding constant. Constants are treated as
+    /// variables in this Term if they appear within the `vars` argument.
     ///
     /// # Examples
     ///
     /// ```
-    /// use willow::logic::Term;
+    /// use willow::logic::{Substitution, Term};
     ///
     /// let term1 = Term::new("f", vec![Term::var("x"), Term::var("y")]);
     /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
     ///
-    /// let mut assignment = Assignment::new();
-    /// assignment.insert("y", term2.args.get(1).unwrap());
+    /// let mut assignment = Substitution::new();
+    /// let z = Term::var("z");
+    /// assignment.insert("y", &z);
     ///
     /// assert_eq!(
-    ///     Term::get_assignment(&term1, &term2, &vec!["y"], Assignment::new()).unwrap(),
+    ///     term1.unify_with(&term2, &["y"], Substitution::new()).unwrap(),
+    ///     assignment
+    /// );
+    /// ```
+    ///
+    /// ```
+    /// use willow::logic::{Substitution, Term};
+    ///
+    /// let term1 = Term::var("x");
+    /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
+    ///
+    /// let mut assignment = Substitution::new();
+    /// assignment.insert("x", &term2);
+    ///
+    /// assert_eq!(
+    ///     term1.unify_with(&term2, &["x"], Substitution::new()).unwrap(),
     ///     assignment
     /// );
     /// ```
@@ -95,7 +111,122 @@ impl<'a> Term<'a> {
         quantified_vars: &[&str],
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
-        todo!()
+        if self.args.len() == 0 && quantified_vars.contains(&self.name) {
+            // The current position in `self` is a variable
+            let var = self.name;
+            // Try to assign var to the value
+            return match assignment.get(var) {
+                // Variable is not yet assigned => assign it
+                None => {
+                    assignment.insert(var, other);
+                    Ok(assignment)
+                }
+                // Variable is already assigned to this value => do nothing
+                Some(value) if *value == other => Ok(assignment),
+                // Variable has a conflicting assignment => return an error
+                Some(old) => Err(UnificationError::ConflictingAssignment {
+                    var,
+                    old,
+                    new: other,
+                }),
+            };
+        }
+        // self is either a constant or a function symbol, so it must exactly match other in name
+        // and arity
+        if self.args.len() != other.args.len() {
+            return Err(UnificationError::ArityMismatch(self, other));
+        }
+
+        if self.name != other.name {
+            return Err(UnificationError::NameMismatch(self, other));
+        }
+
+        // Unify each argument
+        for (a, b) in self.args.iter().zip(other.args.iter()) {
+            assignment = a.unify_with(b, quantified_vars, assignment)?;
+        }
+
+        Ok(assignment)
+    }
+
+    /// Gets the set of constants used in this Term.
+    ///
+    /// Note that
+    ///
+    /// ```
+    /// use willow::logic::Term;
+    /// use std::collections::HashSet;
+    ///
+    /// let term = Term::new(
+    ///     "f",
+    ///     vec![
+    ///         Term::new("g", vec![Term::var("x"), Term::var("y")]),
+    ///         Term::new("h", vec![Term::var("z")]),
+    ///     ],
+    /// );
+    ///
+    /// let constant_array = [
+    ///     Term::new(
+    ///         "f",
+    ///         vec![
+    ///             Term::new("g", vec![Term::var("x"), Term::var("y")]),
+    ///             Term::new("h", vec![Term::var("z")]),
+    ///         ],
+    ///     ),
+    ///     Term::new("g", vec![Term::var("x"), Term::var("y")]),
+    ///     Term::new("h", vec![Term::var("z")]),
+    ///     Term::var("x"),
+    ///     Term::var("y"),
+    ///     Term::var("z"),
+    /// ];
+    /// let mut constants = HashSet::new();
+    /// constants.extend(constant_array.iter());
+    ///
+    /// assert_eq!(term.get_constants(&[]), constants);
+    ///
+    /// ```
+    pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
+        let mut constants = HashSet::new();
+
+        if self.args.is_empty() {
+            if !vars.contains(&self.name) {
+                constants.insert(self);
+            }
+        } else {
+            // This term is a function of subterms
+            /*
+            Basic imperative approach
+
+            let mut num_const_args: usize = 0;
+            for arg in self.args.iter() {
+                let sub_constants = arg.get_constants(vars);
+
+                if sub_constants.contains(&arg) {
+                    num_const_args += 1;
+                }
+                constants.extend(sub_constants);
+            }
+            */
+
+            // Functional approach
+
+            // Add the constants from each of the arguments to the constants set
+            constants.extend(self.args.iter().flat_map(|arg| arg.get_constants(vars)));
+
+            // Count how many args are constants (appear in the constants set)
+            let num_const_args = self
+                .args
+                .iter()
+                .filter(|arg| constants.contains(arg))
+                .count();
+
+            // If this term is a function symbol made of constant arguments, then it is a constant
+            if num_const_args == self.args.len() {
+                constants.insert(self);
+            }
+        }
+
+        constants
     }
 }
 
