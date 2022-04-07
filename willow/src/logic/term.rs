@@ -111,7 +111,7 @@ impl<'a> Term<'a> {
         quantified_vars: &[&str],
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
-        if self.args.len() == 0 && quantified_vars.contains(&self.name) {
+        if self.args.is_empty() && quantified_vars.contains(&self.name) {
             // The current position in `self` is a variable
             let var = self.name;
             // Try to assign var to the value
