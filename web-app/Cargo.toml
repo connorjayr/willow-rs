@@ -1,0 +1,8 @@
+[package]
+name = "willow-web-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+willow = { path = "../willow" }
+yew = "0.19"

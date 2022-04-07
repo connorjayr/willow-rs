@@ -88,19 +88,40 @@ impl Display for Statement<'_> {
 }
 
 impl Statement<'_> {
+    /// Returns true if this statement is a literal.
+    ///
+    /// # Examples
+    ///
+    /// An atom is a literal:
+    /// ```
+    /// use willow::logic::Statement::*;
+    ///
+    /// let p = Atom { predicate: "P", args: Vec::new() };
+    /// assert!(p.is_literal());
+    /// ```
+    ///
+    /// A negation of an atom is also a literal:
+    /// ```
+    /// use willow::logic::Statement::*;
+    ///
+    /// let p = Atom { predicate: "P", args: Vec::new() };
+    /// let not_p = Negation(Box::new(p));
+    /// assert!(not_p.is_literal());
+    /// ```
+    ///
+    /// Any other statements are not literals:
+    /// ```
+    /// use willow::logic::Statement::*;
+    ///
+    /// let p = Atom { predicate: "P", args: Vec::new() };
+    /// let q = Atom { predicate: "Q", args: Vec::new() };
+    /// let p_and_q = Conjunction(vec![p, q]);
+    /// assert!(!p_and_q.is_literal());
+    /// ```
     pub fn is_literal(&self) -> bool {
         match self {
-            Atom {
-                predicate: _,
-                args: _,
-            } => true,
-            Negation(operand) => matches!(
-                **operand,
-                Atom {
-                    predicate: _,
-                    args: _
-                }
-            ),
+            Atom { .. } => true,
+            Negation(operand) => matches!(**operand, Atom { .. }),
             _ => false,
         }
     }

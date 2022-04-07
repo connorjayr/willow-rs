@@ -75,7 +75,7 @@ fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> 
             }
         }
     };
-    if let None = operation {
+    if operator.is_none() {
         return Ok((input, None));
     }
     let operation = operation.unwrap();
@@ -104,7 +104,7 @@ fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> 
 
 fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, (statement1, statement2)) = pair(and_expression_generator, or_expression)(input)?;
-    if let None = statement2 {
+    if statement2.is_none() {
         return Ok((input, statement1));
     }
     let statement2 = statement2.unwrap();
@@ -123,7 +123,7 @@ fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
 
 fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∨")), ws(tag("|")), ws(tag("or")))))(input)?;
-    if let None = operator {
+    if operator.is_none() {
         return Ok((input, None));
     }
 
@@ -149,7 +149,7 @@ fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 
 fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, (statement1, statement2)) = pair(unary_expression, and_expression)(input)?;
-    if let None = statement2 {
+    if statement2.is_none() {
         return Ok((input, statement1));
     }
     let statement2 = statement2.unwrap();
@@ -168,7 +168,7 @@ fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
 
 fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∧")), ws(tag("&")), ws(tag("and")))))(input)?;
-    if let None = operator {
+    if operator.is_none() {
         return Ok((input, None));
     }
 
