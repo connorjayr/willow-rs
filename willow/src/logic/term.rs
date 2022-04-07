@@ -151,7 +151,7 @@ impl<'a> Term<'a> {
 
     /// Gets the set of constants used in this Term.
     ///
-    /// Note that
+    /// # Examples
     ///
     /// ```
     /// use willow::logic::Term;
