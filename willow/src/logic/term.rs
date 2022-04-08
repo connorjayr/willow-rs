@@ -108,10 +108,10 @@ impl<'a> Term<'a> {
     pub fn unify_with(
         &'a self,
         other: &'a Self,
-        quantified_vars: &[&str],
+        vars: &[&str],
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
-        if self.args.is_empty() && quantified_vars.contains(&self.name) {
+        if self.args.is_empty() && vars.contains(&self.name) {
             // The current position in `self` is a variable
             let var = self.name;
             // Try to assign var to the value
@@ -143,7 +143,7 @@ impl<'a> Term<'a> {
 
         // Unify each argument
         for (a, b) in self.args.iter().zip(other.args.iter()) {
-            assignment = a.unify_with(b, quantified_vars, assignment)?;
+            assignment = a.unify_with(b, vars, assignment)?;
         }
 
         Ok(assignment)
