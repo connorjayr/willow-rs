@@ -1,3 +1,52 @@
+//! # LL(1) Grammar
+//!
+//! Our FOL parser is written using an [LL(1) grammar](https://en.wikipedia.org/wiki/LL_grammar) to
+//! expedite parsing. The parser is implemented using the
+//! [parser combinator](https://en.wikipedia.org/wiki/Parser_combinator) library
+//! [nom](https://crates.io/crates/nom). Due to the way the grammar is constructed, the parser
+//! follows the following precedence:
+//!
+//! | Operation     | Precedence |
+//! | ------------- | ---------: |
+//! | Negation      |          1 |
+//! | Conjunction   |          2 |
+//! | Disjunction   |          3 |
+//! | Implication   |          4 |
+//! | Biconditional |          5 |
+//!
+//! Note that this grammar is parameterized by the choice of accepted operators, predicates, and
+//! variables. Note that increasing the amount of overlap between the parameters will decrease the
+//! total number of statements that can be accepted by the language.
+//!
+//! ```text
+//! Iff                -> Implies NullableIff.
+//! NullableIff        -> iff Implies NullableIff
+//!                     | .
+//! Implies            -> Or NullableImplies.
+//! NullableImplies    -> implies Or NullableImplies
+//!                     | .
+//! Or                 -> And NullableOr.
+//! NullableOr         -> or And NullableOr
+//!                     | .
+//! And                -> Unary NullableAnd.
+//! NullableAnd        -> and Unary NullableAnd
+//!                     | .
+//! Unary              -> not Unary
+//!                     | forall Variable Unary
+//!                     | exists Variable Unary
+//!                     | ( Binary )
+//!                     | Predicate.
+//! Predicate          -> predicate TermTail
+//!                     | Term symbol Term.
+//! TermList           -> Term TermListTail.
+//! TermListTail       -> comma Term TermListTail
+//!                     | .
+//! Term               -> Variable TermTail.
+//! TermTail           -> ( TermList )
+//!                     | .
+//! Variable           -> var.
+//! ```
+
 use crate::logic::{Statement, Term};
 use nom::{
     self,
@@ -5,28 +54,13 @@ use nom::{
     bytes::complete::tag,
     character::complete::{char, multispace0, one_of},
     combinator::{opt, recognize},
-    error::{Error, ErrorKind, ParseError},
+    error::ParseError,
     multi::{many0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
-    Finish, IResult,
+    IResult,
 };
 
-impl<'a> TryFrom<&'a str> for Statement<'a> {
-    type Error = Error<&'a str>;
-
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        let parser_result = iff_expr(s);
-        match parser_result.finish() {
-            Err(err) => Err(err),
-            Ok((leftover_text, statement)) => match leftover_text.len() {
-                0 => Ok(*statement),
-                _ => Err(Error::new(leftover_text, ErrorKind::Fail)),
-            },
-        }
-    }
-}
-
-fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
+pub fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, (statement1, statement2)) = pair(implies_expr, nullable_iff)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
@@ -214,12 +248,7 @@ fn unary_expr(input: &str) -> IResult<&str, Box<Statement>> {
 
 fn negation_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, inner_statement) = preceded(
-        alt((
-            ws(tag("¬")),
-            ws(tag("!")),
-            ws(tag("~")),
-            ws(tag("Negation")),
-        )),
+        alt((ws(tag("¬")), ws(tag("!")), ws(tag("~")), ws(tag("not")))),
         unary_expr,
     )(input)?;
 
@@ -232,7 +261,13 @@ fn universal_expr(input: &str) -> IResult<&str, Box<Statement>> {
         pair(ws(variable), unary_expr),
     )(input)?;
 
-    Ok((input, Box::new(Statement::Universal { var, formula })))
+    Ok((
+        input,
+        Box::new(Statement::Universal {
+            var: var.to_string(),
+            formula,
+        }),
+    ))
 }
 
 fn existence_expr(input: &str) -> IResult<&str, Box<Statement>> {
@@ -241,7 +276,13 @@ fn existence_expr(input: &str) -> IResult<&str, Box<Statement>> {
         pair(ws(variable), unary_expr),
     )(input)?;
 
-    Ok((input, Box::new(Statement::Existential { var, formula })))
+    Ok((
+        input,
+        Box::new(Statement::Existential {
+            var: var.to_string(),
+            formula,
+        }),
+    ))
 }
 
 fn predicate(input: &str) -> IResult<&str, Box<Statement>> {
@@ -254,7 +295,7 @@ fn infix_predicate(input: &str) -> IResult<&str, Box<Statement>> {
     Ok((
         input,
         Box::new(Statement::Atom {
-            predicate: operator,
+            predicate: operator.to_string(),
             args: vec![term1, term2],
         }),
     ))
@@ -265,11 +306,17 @@ fn prefix_predicate(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, args) = opt(delimited(ws(char('(')), term_list, ws(char(')'))))(input)?;
 
     match args {
-        Some(args) => Ok((input, Box::new(Statement::Atom { predicate, args }))),
+        Some(args) => Ok((
+            input,
+            Box::new(Statement::Atom {
+                predicate: predicate.to_string(),
+                args,
+            }),
+        )),
         None => Ok((
             input,
             Box::new(Statement::Atom {
-                predicate,
+                predicate: predicate.to_string(),
                 args: vec![],
             }),
         )),
@@ -327,187 +374,129 @@ where
     delimited(multispace0, inner, multispace0)
 }
 
-#[test]
-fn test_parser() {
-    let statement: Statement = "   P and   Q  ".try_into().unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Conjunction(vec![
-            Statement::Atom {
-                predicate: "P",
-                args: vec![]
-            },
-            Statement::Atom {
-                predicate: "Q",
-                args: vec![]
-            }
-        ])
-        .to_string()
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nom::error::{Error, ErrorKind};
 
-    let statement: Statement = "(A or B) implies (C and D)".try_into().unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Conditional(
-            Box::new(Statement::Disjunction(vec![
+    #[test]
+    fn test_parser() {
+        let statement: Statement = "   P and   Q  ".parse().unwrap();
+        assert_eq!(
+            statement,
+            Statement::Conjunction(vec![
                 Statement::Atom {
-                    predicate: "A",
+                    predicate: "P".to_string(),
                     args: vec![]
                 },
                 Statement::Atom {
-                    predicate: "B",
+                    predicate: "Q".to_string(),
                     args: vec![]
                 }
-            ])),
-            Box::new(Statement::Conjunction(vec![
-                Statement::Atom {
-                    predicate: "C",
-                    args: vec![]
-                },
-                Statement::Atom {
-                    predicate: "D",
-                    args: vec![]
-                }
-            ]))
-        )
-        .to_string()
-    );
+            ])
+        );
 
-    let statement: Statement = "F(x) or G(y)".try_into().unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Disjunction(vec![
-            Statement::Atom {
-                predicate: "F",
-                args: vec![Term::var("x")]
-            },
-            Statement::Atom {
-                predicate: "G",
-                args: vec![Term::var("y")]
-            }
-        ])
-        .to_string()
-    );
-
-    let statement: Statement = "Node(x) and Node(parent(x))".try_into().unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Conjunction(vec![
-            Statement::Atom {
-                predicate: "Node",
-                args: vec![Term::var("x")]
-            },
-            Statement::Atom {
-                predicate: "Node",
-                args: vec![Term::new("parent", vec![Term::var("x")])]
-            }
-        ])
-        .to_string()
-    );
-
-    let statement: Statement = "forall x forall y ( P(x) and P(y) )".try_into().unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Box::new(Statement::Universal {
-            var: "x",
-            formula: Box::new(Statement::Universal {
-                var: "y",
-                formula: Box::new(Statement::Conjunction(vec![
+        let statement: Statement = "(A or B) implies (C and D)".parse().unwrap();
+        assert_eq!(
+            statement,
+            Statement::Conditional(
+                Box::new(Statement::Disjunction(vec![
                     Statement::Atom {
-                        predicate: "P",
-                        args: vec![Term::var("x")]
+                        predicate: "A".to_string(),
+                        args: vec![]
                     },
                     Statement::Atom {
-                        predicate: "P",
-                        args: vec![Term::var("y")]
+                        predicate: "B".to_string(),
+                        args: vec![]
+                    }
+                ])),
+                Box::new(Statement::Conjunction(vec![
+                    Statement::Atom {
+                        predicate: "C".to_string(),
+                        args: vec![]
+                    },
+                    Statement::Atom {
+                        predicate: "D".to_string(),
+                        args: vec![]
                     }
                 ]))
-            })
-        })
-        .to_string()
-    );
+            )
+        );
 
-    let statement: Statement = "forall x exists y ( P(x) or P(y) or Q(x, y) and Q(y, x) )"
-        .try_into()
-        .unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Universal {
-            var: "x",
-            formula: Box::new(Statement::Existential {
-                var: "y",
-                formula: Box::new(Statement::Disjunction(vec![
-                    Statement::Atom {
-                        predicate: "P",
-                        args: vec![Term::var("x")]
-                    },
-                    Statement::Atom {
-                        predicate: "P",
-                        args: vec![Term::var("y")]
-                    },
-                    Statement::Conjunction(vec![
+        let statement: Statement = "F(x) or G(y)".parse().unwrap();
+        assert_eq!(
+            statement,
+            Statement::Disjunction(vec![
+                Statement::Atom {
+                    predicate: "F".to_string(),
+                    args: vec![Term::var("x")]
+                },
+                Statement::Atom {
+                    predicate: "G".to_string(),
+                    args: vec![Term::var("y")]
+                }
+            ])
+        );
+
+        let statement: Statement = "Node(x) and Node(parent(x))".parse().unwrap();
+        assert_eq!(
+            statement,
+            Statement::Conjunction(vec![
+                Statement::Atom {
+                    predicate: "Node".to_string(),
+                    args: vec![Term::var("x")]
+                },
+                Statement::Atom {
+                    predicate: "Node".to_string(),
+                    args: vec![Term::new("parent", vec![Term::var("x")])]
+                }
+            ])
+        );
+
+        let statement: Statement = "forall x forall y ( P(x) and P(y) )".parse().unwrap();
+        assert_eq!(
+            statement,
+            Statement::Universal {
+                var: "x".to_string(),
+                formula: Box::new(Statement::Universal {
+                    var: "y".to_string(),
+                    formula: Box::new(Statement::Conjunction(vec![
                         Statement::Atom {
-                            predicate: "Q",
-                            args: vec![Term::var("x"), Term::var("y")]
+                            predicate: "P".to_string(),
+                            args: vec![Term::var("x")]
                         },
                         Statement::Atom {
-                            predicate: "Q",
-                            args: vec![Term::var("y"), Term::var("x")]
+                            predicate: "P".to_string(),
+                            args: vec![Term::var("y")]
                         }
-                    ])
-                ]))
-            })
-        }
-        .to_string()
-    );
-
-    let statement: Statement = "forall n exists x (>(x, n) and <(x, succ(n)))"
-        .try_into()
-        .unwrap();
-    assert_eq!(
-        statement.to_string(),
-        Statement::Universal {
-            var: "n",
-            formula: Box::new(Statement::Existential {
-                var: "x",
-                formula: Box::new(Statement::Conjunction(vec![
-                    Statement::Atom {
-                        predicate: ">",
-                        args: vec![Term::var("x"), Term::var("n")]
-                    },
-                    Statement::Atom {
-                        predicate: "<",
-                        args: vec![Term::var("x"), Term::new("succ", vec![Term::var("n")])]
-                    }
-                ]))
-            })
-        }
-        .to_string()
-    );
-
-    let statement1: Statement = "forall x exists y x < y".try_into().unwrap();
-    assert_eq!(
-        statement1.to_string(),
-        Box::new(Statement::Universal {
-            var: "x",
-            formula: Box::new(Statement::Existential {
-                var: "y",
-                formula: Box::new(Statement::Atom {
-                    predicate: "<",
-                    args: vec![Term::var("x"), Term::var("y")]
+                    ]))
                 })
-            })
-        })
-        .to_string()
-    );
+            }
+        );
 
-    let statement2: Statement = "forall x exists y(x < y)".try_into().unwrap();
-    assert_eq!(statement1.to_string(), statement2.to_string());
+        let statement1: Statement = "forall x exists y x < y".parse().unwrap();
+        assert_eq!(
+            statement1,
+            Statement::Universal {
+                var: "x".to_string(),
+                formula: Box::new(Statement::Existential {
+                    var: "y".to_string(),
+                    formula: Box::new(Statement::Atom {
+                        predicate: "<".to_string(),
+                        args: vec![Term::var("x"), Term::var("y")]
+                    })
+                })
+            }
+        );
 
-    // Expected errors
-    let statement: Result<Statement, _> = "a or b".try_into();
-    assert_eq!(
-        statement.unwrap_err(),
-        Error::new("a or b", ErrorKind::OneOf)
-    );
+        let statement2: Statement = "forall x exists y(x < y)".parse().unwrap();
+        assert_eq!(statement1, statement2);
+
+        // Expected errors
+        let statement: Result<Statement, _> = "a or b".parse();
+        assert_eq!(
+            statement.unwrap_err(),
+            Error::new("a or b".to_string(), ErrorKind::OneOf)
+        );
+    }
 }

@@ -1,4 +1,6 @@
+use crate::logic::Statement;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex, Weak};
 
 #[derive(Debug, thiserror::Error)]
@@ -21,7 +23,8 @@ pub struct Node {
     parent: Option<usize>,
     /// The children of this node.
     children: Vec<usize>,
-    // statement: ???,
+    /// The logical statement for this node.
+    statement: Result<Statement, <Statement as FromStr>::Err>,
     /// Indicates if this node is a premise; i.e., it is assumed to be valid in a truth tree.
     premise: bool,
 }
@@ -31,7 +34,7 @@ impl Node {
         Self {
             id,
             tree,
-            // statement: None,
+            statement: "".parse(),
             premise: false,
             parent: None,
             children: Vec::new(),
@@ -51,6 +54,10 @@ pub struct TruthTree {
 }
 
 impl TruthTree {
+    /// Constructs a new [TruthTree].
+    ///
+    /// Truth trees must have at least one node, so this constructs a new tree with an empty root
+    /// node.
     pub fn new() -> Arc<Mutex<Self>> {
         let root_id = 0;
         let tree = Self {
@@ -69,6 +76,10 @@ impl TruthTree {
         tree
     }
 
+    /// Adds an empty node to this truth tree.
+    ///
+    /// This function does not link the new node to any other nodes in the tree, so it is the
+    /// responsibility of the caller to do so.
     fn add_node(&mut self) -> &mut Node {
         let id = self.next_node_id;
         self.next_node_id += 1;
@@ -76,12 +87,16 @@ impl TruthTree {
         let node = Node::new(id, Weak::clone(&self.root().tree));
 
         if self.nodes.insert(id, node).is_some() {
+            // We hold `&mut self`, which guarantees that no other mutable references could claim
+            // `self.next_node_id` before we use it. The only way that this could panic is if
+            // integer overflow occurs.
             panic!("node id {} is not unique", id);
         }
 
         self.nodes.get_mut(&id).unwrap()
     }
 
+    /// Adds an empty child to a node in this truth tree.
     pub fn add_child(&mut self, parent_id: usize) -> Result<(), TreeError> {
         let mut child = self.add_node();
         let child_id = child.id;
@@ -101,6 +116,7 @@ impl TruthTree {
         self.nodes.get(&self.root).unwrap()
     }
 
+    /// Returns the number of nodes in this tree.
     pub fn size(&self) -> usize {
         self.nodes.len()
     }

@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use web_sys::HtmlInputElement;
 use willow::truth_tree::TruthTree;
 use yew::prelude::*;
 
@@ -8,6 +9,7 @@ struct Model {
 
 enum Msg {
     AddChild,
+    UpdateStatement(String),
 }
 
 impl Component for Model {
@@ -29,19 +31,26 @@ impl Component for Model {
                     truth_tree.add_child(root_id).unwrap();
                 }
             }
+            Msg::UpdateStatement(text) => {
+                log::info!("{}", text);
+            }
         };
         true
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let on_input = ctx.link().callback(|e: InputEvent| {
+            Msg::UpdateStatement(e.target_unchecked_into::<HtmlInputElement>().value())
+        });
         html! {
             <div>
-                <p onclick={ctx.link().callback(|_| Msg::AddChild)}>{format!("{:?}", self.truth_tree.lock().unwrap().size())}</p>
+                <input type="text" oninput={on_input}/>
             </div>
         }
     }
 }
 
 fn main() {
+    wasm_logger::init(wasm_logger::Config::default());
     yew::start_app::<Model>();
 }

@@ -1,37 +1,37 @@
-use crate::logic::Term;
+use crate::{logic::Term, parser};
+use nom::Finish;
 use std::{
     collections::HashSet,
     fmt::{self, Display, Formatter},
+    str::FromStr,
 };
 
 /// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
-#[derive(Debug)]
-pub enum Statement<'a> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Statement {
     Atom {
-        predicate: &'a str,
-        args: Vec<Term<'a>>,
+        predicate: String,
+        args: Vec<Term>,
     },
-    Biconditional(Box<Statement<'a>>, Box<Statement<'a>>),
-    Conditional(Box<Statement<'a>>, Box<Statement<'a>>),
-    Conjunction(Vec<Statement<'a>>),
+    Biconditional(Box<Statement>, Box<Statement>),
+    Conditional(Box<Statement>, Box<Statement>),
+    Conjunction(Vec<Statement>),
     Contradiction,
-    Disjunction(Vec<Statement<'a>>),
+    Disjunction(Vec<Statement>),
     Existential {
-        var: &'a str,
-        formula: Box<Statement<'a>>,
+        var: String,
+        formula: Box<Statement>,
     },
-    Negation(Box<Statement<'a>>),
+    Negation(Box<Statement>),
     Tautology,
     Universal {
-        var: &'a str,
-        formula: Box<Statement<'a>>,
+        var: String,
+        formula: Box<Statement>,
     },
 }
-
-// For implementations, we can use the shorthand
 use Statement::*;
 
-impl Display for Statement<'_> {
+impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Atom { predicate, args } => match args.len() {
@@ -78,103 +78,80 @@ impl Display for Statement<'_> {
     }
 }
 
-impl Statement<'_> {
-    /// Gets the set of constants used in this Statement.
+impl FromStr for Statement {
+    type Err = nom::error::Error<String>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match parser::iff_expr(s).finish() {
+            Err(err) => Err(Self::Err::new(err.input.to_string(), err.code)),
+            Ok((leftover_text, statement)) => match leftover_text.len() {
+                0 => Ok(*statement),
+                _ => Err(Self::Err::new(
+                    leftover_text.to_string(),
+                    nom::error::ErrorKind::Fail,
+                )),
+            },
+        }
+    }
+}
+
+impl Statement {
+    /// Returns a set of all constants that are in this statement.
     ///
-    /// Gathers the set of all constants within the Statement. If any variables from the vars
-    /// argument appear within a Statement, it is not considered a constant since its value may
-    /// still vary.
+    /// A constant is an expression that represents an element in the universe of discourse.
+    /// `bound_vars` contains all variables that are bound to elements in the universe of discourse
+    /// through the use of logical quantifiers.
     ///
     /// # Examples
     ///
+    /// Functions whose arguments are constants are also constants:
     /// ```
-    /// use willow::logic::{Statement::*, Term};
-    /// use std::collections::HashSet;
+    /// use willow::logic::{Statement, Term};
     ///
-    /// let basic_statement = Conditional(
-    ///     Box::new(Atom {
-    ///         predicate: "IsSquare",
-    ///         args: vec![Term::var("x")],
-    ///     }),
-    ///     Box::new(Conjunction(vec![
-    ///         Atom {
-    ///             predicate: "Equals",
-    ///             args: vec![
-    ///                 Term::new("width", vec![Term::var("x")]),
-    ///                 Term::new("height", vec![Term::var("x")]),
-    ///             ],
-    ///         },
-    ///         Negation(Box::new(Atom {
-    ///             predicate: "IsCircle",
-    ///             args: vec![Term::var("x")],
-    ///         })),
-    ///     ])),
-    /// );
+    /// let statement: Statement = "IsSquare(x) implies (Equals(width(x),height(x)) and not IsCircle(x))"
+    ///     .parse()
+    ///     .unwrap();
     ///
-    /// let constant_array = [
+    /// let constants = [
     ///     Term::var("x"),
     ///     Term::new("width", vec![Term::var("x")]),
     ///     Term::new("height", vec![Term::var("x")]),
     /// ];
-    /// let mut constants = HashSet::new();
-    /// constants.extend(constant_array.iter());
     ///
-    /// assert_eq!(basic_statement.get_constants(&[]), constants);
+    /// assert_eq!(statement.get_constants(&[]), constants.iter().collect());
     /// ```
     ///
+    /// Variables that are bound by logical quantifiers are not constants:
     /// ```
-    /// use willow::logic::{Statement::*, Term};
-    /// use std::collections::HashSet;
+    /// use willow::logic::Statement;
     ///
-    /// let complex_statement = Universal {
-    ///     var: "x",
-    ///     formula: Box::new(Negation(Box::new(Existential {
-    ///         var: "y",
-    ///         formula: Box::new(Atom {
-    ///             predicate: "<",
-    ///             args: vec![Term::var("x"), Term::var("y")],
-    ///         }),
-    ///     }))),
-    /// };
+    /// let statement: Statement = "forall x not exists y <(x, y)"
+    ///     .parse()
+    ///     .unwrap();
     ///
-    ///
-    /// let constants = HashSet::new();
-    ///
-    /// assert_eq!(complex_statement.get_constants(&[]), constants);
+    /// assert!(statement.get_constants(&[]).is_empty());
     /// ```
-    pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
-        let mut constants = HashSet::new();
-
+    pub fn get_constants(&self, bound_vars: &[&str]) -> HashSet<&Term> {
         match self {
-            Atom { predicate: _, args } => {
-                constants.extend(args.iter().flat_map(|arg| arg.get_constants(vars)))
+            Atom { args, .. } => args
+                .iter()
+                .flat_map(|arg| arg.get_constants(bound_vars))
+                .collect(),
+            Biconditional(left, right) | Conditional(left, right) => [left, right]
+                .into_iter()
+                .flat_map(|arg| arg.get_constants(bound_vars))
+                .collect(),
+            Contradiction | Tautology => HashSet::new(),
+            Conjunction(operands) | Disjunction(operands) => operands
+                .iter()
+                .flat_map(|arg| arg.get_constants(bound_vars))
+                .collect(),
+            Existential { var, formula } | Universal { var, formula } => {
+                let bound_vars = [bound_vars, &[var]].concat();
+                formula.get_constants(&bound_vars)
             }
-            Biconditional(left, right) => {
-                constants.extend([left, right].iter().flat_map(|arg| arg.get_constants(vars)))
-            }
-            Conditional(left, right) => {
-                constants.extend([left, right].iter().flat_map(|arg| arg.get_constants(vars)))
-            }
-            Contradiction => (),
-            Conjunction(operands) => {
-                constants.extend(operands.iter().flat_map(|arg| arg.get_constants(vars)))
-            }
-            Disjunction(operands) => {
-                constants.extend(operands.iter().flat_map(|arg| arg.get_constants(vars)))
-            }
-            Existential { var, formula } => {
-                let extended_vars = [vars, &[var]].concat();
-                constants.extend(formula.get_constants(extended_vars.as_slice()));
-            }
-            Negation(operand) => constants.extend(operand.get_constants(vars)),
-            Tautology => (),
-            Universal { var, formula } => {
-                let extended_vars = [vars, &[var]].concat();
-                constants.extend(formula.get_constants(extended_vars.as_slice()));
-            }
+            Negation(operand) => operand.get_constants(bound_vars),
         }
-
-        constants
     }
 
     /// Returns true if this statement is a literal.
@@ -185,7 +162,7 @@ impl Statement<'_> {
     /// ```
     /// use willow::logic::Statement::*;
     ///
-    /// let p = Atom { predicate: "P", args: Vec::new() };
+    /// let p = Atom { predicate: "P".to_string(), args: Vec::new() };
     /// assert!(p.is_literal());
     /// ```
     ///
@@ -193,7 +170,7 @@ impl Statement<'_> {
     /// ```
     /// use willow::logic::Statement::*;
     ///
-    /// let p = Atom { predicate: "P", args: Vec::new() };
+    /// let p = Atom { predicate: "P".to_string(), args: Vec::new() };
     /// let not_p = Negation(Box::new(p));
     /// assert!(not_p.is_literal());
     /// ```
@@ -202,8 +179,8 @@ impl Statement<'_> {
     /// ```
     /// use willow::logic::Statement::*;
     ///
-    /// let p = Atom { predicate: "P", args: Vec::new() };
-    /// let q = Atom { predicate: "Q", args: Vec::new() };
+    /// let p = Atom { predicate: "P".to_string(), args: Vec::new() };
+    /// let q = Atom { predicate: "Q".to_string(), args: Vec::new() };
     /// let p_and_q = Conjunction(vec![p, q]);
     /// assert!(!p_and_q.is_literal());
     /// ```
