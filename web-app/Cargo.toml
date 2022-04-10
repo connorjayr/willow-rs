@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+log = "0.4"
+wasm-logger = "0.2"
+web-sys = "0.3"
 willow = { path = "../willow" }
 yew = "0.19"
