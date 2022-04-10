@@ -1,5 +1,8 @@
 use crate::logic::Term;
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 /// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
 #[derive(Debug)]
@@ -14,13 +17,13 @@ pub enum Statement<'a> {
     Contradiction,
     Disjunction(Vec<Statement<'a>>),
     Existential {
-        vars: Vec<&'a str>,
+        var: &'a str,
         formula: Box<Statement<'a>>,
     },
     Negation(Box<Statement<'a>>),
     Tautology,
     Universal {
-        vars: Vec<&'a str>,
+        var: &'a str,
         formula: Box<Statement<'a>>,
     },
 }
@@ -63,25 +66,13 @@ impl Display for Statement<'_> {
                     .collect::<Vec<String>>()
                     .join(" ∨ ")
             ),
-            Existential { vars, formula } => {
-                let vars = vars
-                    .iter()
-                    .map(|var| var.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",");
-
-                write!(f, "(∃{} {})", vars, formula)
+            Existential { var, formula } => {
+                write!(f, "(∃{} {})", var, formula)
             }
             Negation(operand) => write!(f, "¬{}", operand),
             Tautology => write!(f, "⊤"),
-            Universal { vars, formula } => {
-                let vars = vars
-                    .iter()
-                    .map(|var| var.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",");
-
-                write!(f, "(∀{} {})", vars, formula)
+            Universal { var, formula } => {
+                write!(f, "(∀{} {})", var, formula)
             }
         }
     }

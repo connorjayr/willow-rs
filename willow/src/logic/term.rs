@@ -215,21 +215,6 @@ impl<'a> Term<'a> {
             }
         } else {
             // This term is a function of subterms
-            /*
-            Basic imperative approach
-
-            let mut num_const_args: usize = 0;
-            for arg in self.args.iter() {
-                let sub_constants = arg.get_constants(vars);
-
-                if sub_constants.contains(&arg) {
-                    num_const_args += 1;
-                }
-                constants.extend(sub_constants);
-            }
-            */
-
-            // Functional approach
 
             // Add the constants from each of the arguments to the constants set
             constants.extend(self.args.iter().flat_map(|arg| arg.get_constants(vars)));
