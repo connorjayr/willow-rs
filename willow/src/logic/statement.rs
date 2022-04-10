@@ -136,6 +136,8 @@ impl Statement<'_> {
     ///         }),
     ///     }))),
     /// };
+    ///
+    ///
     /// let constants = HashSet::new();
     ///
     /// assert_eq!(complex_statement.get_constants(&[]), constants);

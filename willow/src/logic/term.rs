@@ -111,7 +111,7 @@ impl<'a> Term<'a> {
         vars: &[&str],
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
-        if self.args.is_empty() && vars.contains(&self.name) {
+        if self.arity() == 0 && vars.contains(&self.name) {
             // The current position in `self` is a variable
             let var = self.name;
             // Try to assign var to the value
@@ -133,7 +133,7 @@ impl<'a> Term<'a> {
         }
         // self is either a constant or a function symbol, so it must exactly match other in name
         // and arity
-        if self.args.len() != other.args.len() {
+        if self.arity() != other.arity() {
             return Err(UnificationError::ArityMismatch(self, other));
         }
 
@@ -209,7 +209,7 @@ impl<'a> Term<'a> {
     pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
         let mut constants = HashSet::new();
 
-        if self.args.is_empty() {
+        if self.arity() == 0 {
             if !vars.contains(&self.name) {
                 constants.insert(self);
             }
@@ -227,7 +227,7 @@ impl<'a> Term<'a> {
                 .count();
 
             // If this term is a function symbol made of constant arguments, then it is a constant
-            if num_const_args == self.args.len() {
+            if num_const_args == self.arity() {
                 constants.insert(self);
             }
         }

@@ -3,11 +3,11 @@ use nom::{
     self,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alphanumeric0, char, multispace0, one_of},
+    character::complete::{char, multispace0, one_of},
     combinator::{opt, recognize},
     error::{Error, ErrorKind, ParseError},
-    multi::separated_list1,
-    sequence::{delimited, pair, preceded},
+    multi::{many0, separated_list1},
+    sequence::{delimited, pair, preceded, tuple},
     Finish, IResult,
 };
 
@@ -23,7 +23,7 @@ impl<'a> TryFrom<&'a str> for Statement<'a> {
     type Error = Error<&'a str>;
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        let parser_result = expression_generator(s);
+        let parser_result = binary_expr(s);
         match parser_result.finish() {
             Err(err) => Err(err),
             Ok((leftover_text, statement)) => match leftover_text.len() {
@@ -34,8 +34,8 @@ impl<'a> TryFrom<&'a str> for Statement<'a> {
     }
 }
 
-fn expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(or_expression_generator, expression)(input)?;
+fn binary_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (statement1, statement2)) = pair(or_expr, nullable_binary)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
         Some((nested_operation, statement2)) => match nested_operation {
@@ -51,7 +51,7 @@ fn expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> {
+fn nullable_binary(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> {
     let (input, operator) = opt(alt((
         ws(tag("→")),
         ws(tag("->")),
@@ -80,7 +80,7 @@ fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> 
     }
     let operation = operation.unwrap();
 
-    let (input, (statement1, statement2)) = pair(or_expression_generator, expression)(input)?;
+    let (input, (statement1, statement2)) = pair(or_expr, nullable_binary)(input)?;
     match statement2 {
         None => Ok((input, Some((operation, statement1)))),
         Some((nested_operation, statement2)) => match nested_operation {
@@ -102,8 +102,8 @@ fn expression(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> 
     }
 }
 
-fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(and_expression_generator, or_expression)(input)?;
+fn or_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (statement1, statement2)) = pair(and_expr, nullable_or)(input)?;
     if statement2.is_none() {
         return Ok((input, statement1));
     }
@@ -121,13 +121,13 @@ fn or_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn nullable_or(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∨")), ws(tag("|")), ws(tag("or")))))(input)?;
     if operator.is_none() {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(and_expression_generator, or_expression)(input)?;
+    let (input, (statement1, statement2)) = pair(and_expr, nullable_or)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -147,8 +147,8 @@ fn or_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     }
 }
 
-fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(unary_expression, and_expression)(input)?;
+fn and_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (statement1, statement2)) = pair(unary_expr, nullable_and)(input)?;
     if statement2.is_none() {
         return Ok((input, statement1));
     }
@@ -166,13 +166,13 @@ fn and_expression_generator(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn nullable_and(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∧")), ws(tag("&")), ws(tag("and")))))(input)?;
     if operator.is_none() {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(unary_expression, and_expression)(input)?;
+    let (input, (statement1, statement2)) = pair(unary_expr, nullable_and)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -192,17 +192,17 @@ fn and_expression(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     }
 }
 
-fn unary_expression(input: &str) -> IResult<&str, Box<Statement>> {
+fn unary_expr(input: &str) -> IResult<&str, Box<Statement>> {
     alt((
-        negation_expression,
-        universal_expression,
-        existence_expression,
-        delimited(ws(char('(')), expression_generator, ws(char(')'))),
+        negation_expr,
+        universal_expr,
+        existence_expr,
+        delimited(ws(char('(')), binary_expr, ws(char(')'))),
         ws(predicate),
     ))(input)
 }
 
-fn negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
+fn negation_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, inner_statement) = preceded(
         alt((
             ws(tag("¬")),
@@ -210,43 +210,47 @@ fn negation_expression(input: &str) -> IResult<&str, Box<Statement>> {
             ws(tag("~")),
             ws(tag("Negation")),
         )),
-        unary_expression,
+        unary_expr,
     )(input)?;
 
     Ok((input, Box::new(Statement::Negation(inner_statement))))
 }
 
-fn universal_expression(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (var, inner_statement)) = preceded(
+fn universal_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (var, formula)) = preceded(
         alt((ws(tag("∀")), ws(tag("forall")))),
-        pair(ws(constant), unary_expression),
+        pair(ws(variable), unary_expr),
     )(input)?;
 
-    Ok((
-        input,
-        Box::new(Statement::Universal {
-            var,
-            formula: inner_statement,
-        }),
-    ))
+    Ok((input, Box::new(Statement::Universal { var, formula })))
 }
 
-fn existence_expression(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (var, inner_statement)) = preceded(
+fn existence_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (var, formula)) = preceded(
         alt((ws(tag("∃")), ws(tag("exists")))),
-        pair(ws(constant), unary_expression),
+        pair(ws(variable), unary_expr),
     )(input)?;
 
-    Ok((
-        input,
-        Box::new(Statement::Existential {
-            var,
-            formula: inner_statement,
-        }),
-    ))
+    Ok((input, Box::new(Statement::Existential { var, formula })))
 }
 
 fn predicate(input: &str) -> IResult<&str, Box<Statement>> {
+    alt((infix_predicate, prefix_predicate))(input)
+}
+
+fn infix_predicate(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (term1, operator, term2)) = tuple((ws(term), ws(operator), ws(term)))(input)?;
+
+    Ok((
+        input,
+        Box::new(Statement::Atom {
+            predicate: operator,
+            args: vec![term1, term2],
+        }),
+    ))
+}
+
+fn prefix_predicate(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, predicate) = ws(predicate_name)(input)?;
     let (input, args) = opt(delimited(ws(char('(')), term_list, ws(char(')'))))(input)?;
 
@@ -262,8 +266,12 @@ fn predicate(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
+fn term_list(input: &str) -> IResult<&str, Vec<Term>> {
+    separated_list1(char(','), ws(term))(input)
+}
+
 fn term(input: &str) -> IResult<&str, Term> {
-    let (input, name) = ws(constant)(input)?;
+    let (input, name) = ws(variable)(input)?;
     let (input, args) = opt(delimited(ws(char('(')), term_list, ws(char(')'))))(input)?;
 
     match args {
@@ -272,28 +280,23 @@ fn term(input: &str) -> IResult<&str, Term> {
     }
 }
 
-fn term_list(input: &str) -> IResult<&str, Vec<Term>> {
-    separated_list1(char(','), ws(term))(input)
-}
-
 fn predicate_name(input: &str) -> IResult<&str, &str> {
-    alt((
-        recognize(pair(uppercase_alpha, alphanumeric0)),
-        known_operator,
-    ))(input)
+    alt((recognize(pair(uppercase_alpha, acceptable_char0)), operator))(input)
 }
 
-fn constant(input: &str) -> IResult<&str, &str> {
-    recognize(pair(lowercase_alpha, alphanumeric0))(input)
+fn variable(input: &str) -> IResult<&str, &str> {
+    recognize(pair(lowercase_alpha, acceptable_char0))(input)
 }
 
-fn known_operator(input: &str) -> IResult<&str, &str> {
+fn acceptable_char0(input: &str) -> IResult<&str, &str> {
+    recognize(many0(one_of(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_",
+    )))(input)
+}
+
+fn operator(input: &str) -> IResult<&str, &str> {
     recognize(one_of("<>="))(input)
 }
-
-// fn constant_list(input: &str) -> IResult<&str, Vec<&str>> {
-//     separated_list1(char(','), ws(constant))(input)
-// }
 
 fn lowercase_alpha(input: &str) -> IResult<&str, char> {
     one_of("abcdefghijklmnopqrstuvwxyz")(input)
@@ -472,9 +475,9 @@ fn test_parser() {
         .to_string()
     );
 
-    let statement: Statement = "forall x exists y <(x,y)".try_into().unwrap();
+    let statement1: Statement = "forall x exists y x < y".try_into().unwrap();
     assert_eq!(
-        statement.to_string(),
+        statement1.to_string(),
         Box::new(Statement::Universal {
             var: "x",
             formula: Box::new(Statement::Existential {
@@ -487,6 +490,9 @@ fn test_parser() {
         })
         .to_string()
     );
+
+    let statement2: Statement = "forall x exists y(x < y)".try_into().unwrap();
+    assert_eq!(statement1.to_string(), statement2.to_string());
 
     // Expected errors
     let statement: Result<Statement, _> = "a or b".try_into();
