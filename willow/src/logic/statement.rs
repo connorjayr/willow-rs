@@ -79,6 +79,102 @@ impl Display for Statement<'_> {
 }
 
 impl Statement<'_> {
+    /// Gets the set of constants used in this Statement.
+    ///
+    /// Gathers the set of all constants within the Statement. If any variables from the vars
+    /// argument appear within a Statement, it is not considered a constant since its value may
+    /// still vary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use willow::logic::{Statement::*, Term};
+    /// use std::collections::HashSet;
+    ///
+    /// let basic_statement = Conditional(
+    ///     Box::new(Atom {
+    ///         predicate: "IsSquare",
+    ///         args: vec![Term::var("x")],
+    ///     }),
+    ///     Box::new(Conjunction(vec![
+    ///         Atom {
+    ///             predicate: "Equals",
+    ///             args: vec![
+    ///                 Term::new("width", vec![Term::var("x")]),
+    ///                 Term::new("height", vec![Term::var("x")]),
+    ///             ],
+    ///         },
+    ///         Negation(Box::new(Atom {
+    ///             predicate: "IsCircle",
+    ///             args: vec![Term::var("x")],
+    ///         })),
+    ///     ])),
+    /// );
+    ///
+    /// let constant_array = [
+    ///     Term::var("x"),
+    ///     Term::new("width", vec![Term::var("x")]),
+    ///     Term::new("height", vec![Term::var("x")]),
+    /// ];
+    /// let mut constants = HashSet::new();
+    /// constants.extend(constant_array.iter());
+    ///
+    /// assert_eq!(basic_statement.get_constants(&[]), constants);
+    /// ```
+    ///
+    /// ```
+    /// use willow::logic::{Statement::*, Term};
+    /// use std::collections::HashSet;
+    ///
+    /// let complex_statement = Universal {
+    ///     var: "x",
+    ///     formula: Box::new(Negation(Box::new(Existential {
+    ///         var: "y",
+    ///         formula: Box::new(Atom {
+    ///             predicate: "<",
+    ///             args: vec![Term::var("x"), Term::var("y")],
+    ///         }),
+    ///     }))),
+    /// };
+    /// let constants = HashSet::new();
+    ///
+    /// assert_eq!(complex_statement.get_constants(&[]), constants);
+    /// ```
+    pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
+        let mut constants = HashSet::new();
+
+        match self {
+            Atom { predicate: _, args } => {
+                constants.extend(args.iter().flat_map(|arg| arg.get_constants(vars)))
+            }
+            Biconditional(left, right) => {
+                constants.extend([left, right].iter().flat_map(|arg| arg.get_constants(vars)))
+            }
+            Conditional(left, right) => {
+                constants.extend([left, right].iter().flat_map(|arg| arg.get_constants(vars)))
+            }
+            Contradiction => (),
+            Conjunction(operands) => {
+                constants.extend(operands.iter().flat_map(|arg| arg.get_constants(vars)))
+            }
+            Disjunction(operands) => {
+                constants.extend(operands.iter().flat_map(|arg| arg.get_constants(vars)))
+            }
+            Existential { var, formula } => {
+                let extended_vars = [vars, &[var]].concat();
+                constants.extend(formula.get_constants(extended_vars.as_slice()));
+            }
+            Negation(operand) => constants.extend(operand.get_constants(vars)),
+            Tautology => (),
+            Universal { var, formula } => {
+                let extended_vars = [vars, &[var]].concat();
+                constants.extend(formula.get_constants(extended_vars.as_slice()));
+            }
+        }
+
+        constants
+    }
+
     /// Returns true if this statement is a literal.
     ///
     /// # Examples
