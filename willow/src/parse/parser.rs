@@ -11,19 +11,11 @@ use nom::{
     Finish, IResult,
 };
 
-enum Operator {
-    // And,
-    Biconditional,
-    Conditional,
-    // Negation,
-    // Or,
-}
-
 impl<'a> TryFrom<&'a str> for Statement<'a> {
     type Error = Error<&'a str>;
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        let parser_result = binary_expr(s);
+        let parser_result = iff_expr(s);
         match parser_result.finish() {
             Err(err) => Err(err),
             Ok((leftover_text, statement)) => match leftover_text.len() {
@@ -34,24 +26,61 @@ impl<'a> TryFrom<&'a str> for Statement<'a> {
     }
 }
 
-fn binary_expr(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(or_expr, nullable_binary)(input)?;
+fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (statement1, statement2)) = pair(implies_expr, nullable_iff)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
-        Some((nested_operation, statement2)) => match nested_operation {
-            Operator::Conditional => Ok((
+        Some(statement2) => Ok((
+            input,
+            Box::new(Statement::Biconditional(statement1, statement2)),
+        )),
+    }
+}
+
+fn nullable_iff(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+    let (input, operator) = opt(alt((
+        ws(tag("↔")),
+        ws(tag("<->")),
+        ws(tag("%")),
+        ws(tag("iff")),
+        ws(tag("equiv")),
+    )))(input)?;
+    if operator.is_none() {
+        return Ok((input, None));
+    }
+
+    let (input, (statement1, statement2)) = pair(implies_expr, nullable_iff)(input)?;
+    match statement2 {
+        None => Ok((input, Some(statement1))),
+        Some(statement2) => match *statement2 {
+            // Auto-reduce commutative statements
+            Statement::Disjunction(mut operands) => {
+                operands.insert(0, *statement1);
+                Ok((input, Some(Box::new(Statement::Disjunction(operands)))))
+            }
+            _ => Ok((
                 input,
-                Box::new(Statement::Conditional(statement1, statement2)),
-            )),
-            Operator::Biconditional => Ok((
-                input,
-                Box::new(Statement::Biconditional(statement1, statement2)),
+                Some(Box::new(Statement::Disjunction(vec![
+                    *statement1,
+                    *statement2,
+                ]))),
             )),
         },
     }
 }
 
-fn nullable_binary(input: &str) -> IResult<&str, Option<(Operator, Box<Statement>)>> {
+fn implies_expr(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, (statement1, statement2)) = pair(or_expr, nullable_implies)(input)?;
+    match statement2 {
+        None => Ok((input, statement1)),
+        Some(statement2) => Ok((
+            input,
+            Box::new(Statement::Conditional(statement1, statement2)),
+        )),
+    }
+}
+
+fn nullable_implies(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((
         ws(tag("→")),
         ws(tag("->")),
@@ -59,44 +88,25 @@ fn nullable_binary(input: &str) -> IResult<&str, Option<(Operator, Box<Statement
         ws(tag("implies")),
         ws(tag("only if")),
     )))(input)?;
-    let (input, operation) = match operator {
-        Some(_) => (input, Some(Operator::Conditional)),
-        None => {
-            let (input, operator) = opt(alt((
-                ws(tag("↔")),
-                ws(tag("<->")),
-                ws(tag("%")),
-                ws(tag("iff")),
-                ws(tag("equiv")),
-            )))(input)?;
-            match operator {
-                Some(_) => (input, Some(Operator::Biconditional)),
-                None => (input, None),
-            }
-        }
-    };
     if operator.is_none() {
         return Ok((input, None));
     }
-    let operation = operation.unwrap();
 
-    let (input, (statement1, statement2)) = pair(or_expr, nullable_binary)(input)?;
+    let (input, (statement1, statement2)) = pair(or_expr, nullable_implies)(input)?;
     match statement2 {
-        None => Ok((input, Some((operation, statement1)))),
-        Some((nested_operation, statement2)) => match nested_operation {
-            Operator::Conditional => Ok((
+        None => Ok((input, Some(statement1))),
+        Some(statement2) => match *statement2 {
+            // Auto-reduce commutative statements
+            Statement::Disjunction(mut operands) => {
+                operands.insert(0, *statement1);
+                Ok((input, Some(Box::new(Statement::Disjunction(operands)))))
+            }
+            _ => Ok((
                 input,
-                Some((
-                    operation,
-                    Box::new(Statement::Conditional(statement1, statement2)),
-                )),
-            )),
-            Operator::Biconditional => Ok((
-                input,
-                Some((
-                    operation,
-                    Box::new(Statement::Biconditional(statement1, statement2)),
-                )),
+                Some(Box::new(Statement::Disjunction(vec![
+                    *statement1,
+                    *statement2,
+                ]))),
             )),
         },
     }
@@ -197,7 +207,7 @@ fn unary_expr(input: &str) -> IResult<&str, Box<Statement>> {
         negation_expr,
         universal_expr,
         existence_expr,
-        delimited(ws(char('(')), binary_expr, ws(char(')'))),
+        delimited(ws(char('(')), iff_expr, ws(char(')'))),
         ws(predicate),
     ))(input)
 }
