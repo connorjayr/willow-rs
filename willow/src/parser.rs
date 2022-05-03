@@ -1,3 +1,52 @@
+//! # LL(1) Grammar
+//!
+//! Our FOL parser is written using an [LL(1) grammar](https://en.wikipedia.org/wiki/LL_grammar) to
+//! expedite parsing. The parser is implemented using the
+//! [parser combinator](https://en.wikipedia.org/wiki/Parser_combinator) library
+//! [nom](https://crates.io/crates/nom). Due to the way the grammar is constructed, the parser
+//! follows the following precedence:
+//!
+//! | Operation     | Precedence |
+//! | ------------- | ---------: |
+//! | Negation      |          1 |
+//! | Conjunction   |          2 |
+//! | Disjunction   |          3 |
+//! | Implication   |          4 |
+//! | Biconditional |          5 |
+//!
+//! Note that this grammar is parameterized by the choice of accepted operators, predicates, and
+//! variables. Note that increasing the amount of overlap between the parameters will decrease the
+//! total number of statements that can be accepted by the language.
+//!
+//! ```text
+//! Iff                -> Implies NullableIff.
+//! NullableIff        -> iff Implies NullableIff
+//!                     | .
+//! Implies            -> Or NullableImplies.
+//! NullableImplies    -> implies Or NullableImplies
+//!                     | .
+//! Or                 -> And NullableOr.
+//! NullableOr         -> or And NullableOr
+//!                     | .
+//! And                -> Unary NullableAnd.
+//! NullableAnd        -> and Unary NullableAnd
+//!                     | .
+//! Unary              -> not Unary
+//!                     | forall Variable Unary
+//!                     | exists Variable Unary
+//!                     | ( Binary )
+//!                     | Predicate.
+//! Predicate          -> predicate TermTail
+//!                     | Term symbol Term.
+//! TermList           -> Term TermListTail.
+//! TermListTail       -> comma Term TermListTail
+//!                     | .
+//! Term               -> Variable TermTail.
+//! TermTail           -> ( TermList )
+//!                     | .
+//! Variable           -> var.
+//! ```
+
 use std::str::FromStr;
 
 use crate::logic::{Statement, Term};
@@ -29,7 +78,7 @@ impl FromStr for Statement {
 }
 
 fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(implies_expr, nullable_iff)(input)?;
+    let (input, (statement1, statement2)) = pair(implies_expr, optional_iff)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
         Some(statement2) => Ok((
@@ -39,7 +88,7 @@ fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn nullable_iff(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn optional_iff(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((
         ws(tag("↔")),
         ws(tag("<->")),
@@ -51,7 +100,7 @@ fn nullable_iff(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(implies_expr, nullable_iff)(input)?;
+    let (input, (statement1, statement2)) = pair(implies_expr, optional_iff)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -72,7 +121,7 @@ fn nullable_iff(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 }
 
 fn implies_expr(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(or_expr, nullable_implies)(input)?;
+    let (input, (statement1, statement2)) = pair(or_expr, optional_implies)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
         Some(statement2) => Ok((
@@ -82,7 +131,7 @@ fn implies_expr(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn nullable_implies(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn optional_implies(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((
         ws(tag("→")),
         ws(tag("->")),
@@ -94,7 +143,7 @@ fn nullable_implies(input: &str) -> IResult<&str, Option<Box<Statement>>> {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(or_expr, nullable_implies)(input)?;
+    let (input, (statement1, statement2)) = pair(or_expr, optional_implies)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -115,7 +164,7 @@ fn nullable_implies(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 }
 
 fn or_expr(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(and_expr, nullable_or)(input)?;
+    let (input, (statement1, statement2)) = pair(and_expr, optional_or)(input)?;
     if statement2.is_none() {
         return Ok((input, statement1));
     }
@@ -133,13 +182,13 @@ fn or_expr(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn nullable_or(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn optional_or(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∨")), ws(tag("|")), ws(tag("or")))))(input)?;
     if operator.is_none() {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(and_expr, nullable_or)(input)?;
+    let (input, (statement1, statement2)) = pair(and_expr, optional_or)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -160,7 +209,7 @@ fn nullable_or(input: &str) -> IResult<&str, Option<Box<Statement>>> {
 }
 
 fn and_expr(input: &str) -> IResult<&str, Box<Statement>> {
-    let (input, (statement1, statement2)) = pair(unary_expr, nullable_and)(input)?;
+    let (input, (statement1, statement2)) = pair(unary_expr, optional_and)(input)?;
     if statement2.is_none() {
         return Ok((input, statement1));
     }
@@ -178,13 +227,13 @@ fn and_expr(input: &str) -> IResult<&str, Box<Statement>> {
     }
 }
 
-fn nullable_and(input: &str) -> IResult<&str, Option<Box<Statement>>> {
+fn optional_and(input: &str) -> IResult<&str, Option<Box<Statement>>> {
     let (input, operator) = opt(alt((ws(tag("∧")), ws(tag("&")), ws(tag("and")))))(input)?;
     if operator.is_none() {
         return Ok((input, None));
     }
 
-    let (input, (statement1, statement2)) = pair(unary_expr, nullable_and)(input)?;
+    let (input, (statement1, statement2)) = pair(unary_expr, optional_and)(input)?;
     match statement2 {
         None => Ok((input, Some(statement1))),
         Some(statement2) => match *statement2 {
@@ -216,12 +265,7 @@ fn unary_expr(input: &str) -> IResult<&str, Box<Statement>> {
 
 fn negation_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, inner_statement) = preceded(
-        alt((
-            ws(tag("¬")),
-            ws(tag("!")),
-            ws(tag("~")),
-            ws(tag("Negation")),
-        )),
+        alt((ws(tag("¬")), ws(tag("!")), ws(tag("~")), ws(tag("not")))),
         unary_expr,
     )(input)?;
 

@@ -1,3 +1,4 @@
+use crate::logic::Statement;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
@@ -115,18 +116,18 @@ impl Term {
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
         if self.arity() == 0 && vars.contains(&self.name.as_str()) {
-            // The current position in `self` is a variable
+            // `self` is a nullary function which is a variable, so we can assign a value to it
             let var = self.name.as_str();
             // Try to assign var to the value
             return match assignment.get(var) {
-                // Variable is not yet assigned => assign it
+                // Variable is not yet assigned => assign the corresponding value to it
                 None => {
                     assignment.insert(var, other);
                     Ok(assignment)
                 }
-                // Variable is already assigned to this value => do nothing
+                // Variable is already assigned to this value => consistent assignment so no-op
                 Some(value) if *value == other => Ok(assignment),
-                // Variable has a conflicting assignment => return an error
+                // Variable has a conflicting assignment => inconsistent assignment so return error
                 Some(old) => Err(UnificationError::ConflictingAssignment {
                     var,
                     old,
@@ -134,12 +135,13 @@ impl Term {
                 }),
             };
         }
-        // self is either a constant or a function symbol, so it must exactly match other in name
-        // and arity
+        // self is a function symbol or doesn't vary
+
+        // must exactly match `other` in name...
         if self.arity() != other.arity() {
             return Err(UnificationError::ArityMismatch(self, other));
         }
-
+        // ... and in arity
         if self.name != other.name {
             return Err(UnificationError::NameMismatch(self, other));
         }
@@ -262,9 +264,19 @@ impl Display for Term {
 /// [this page](https://en.wikipedia.org/wiki/Substitution_(logic)) for more details.
 pub type Substitution<'a> = HashMap<&'a str, &'a Term>;
 
-/// Errors that occur during unification of two terms.
+/// Errors that occur during unification of two statements.
 #[derive(Debug, thiserror::Error)]
 pub enum UnificationError<'a> {
+    /// An error that occurs when a term cannot be unified with another term because they have
+    /// different arities; e.g., if we try to unify a nullary function with a unary function
+    #[error(
+        "cannot unify function {} with arity {} to function {} with arity {}",
+        .0.name,
+        .0.arity(),
+        .1.name,
+        .1.arity()
+    )]
+    ArityMismatch(&'a Term, &'a Term),
     #[error("")]
     ConflictingAssignment {
         var: &'a str,
@@ -275,14 +287,8 @@ pub enum UnificationError<'a> {
     /// different names (also referred to as "function symbols").
     #[error("cannot unify symbol {0} to symbol {1}")]
     NameMismatch(&'a Term, &'a Term),
-    /// An error that occurs when a term cannot be unified with another term because they have
-    /// different arities; e.g., if we try to unify a variable with a function.
-    #[error(
-        "cannot unify function {} with arity {} to function {} with arity {}",
-        .0.name,
-        .0.arity(),
-        .1.name,
-        .1.arity()
-    )]
-    ArityMismatch(&'a Term, &'a Term),
+    /// An error that occurs when a statement cannot be unified with another statement because they
+    /// have differing types (e.g. one is a Conjunction and one is a Disjunction)
+    #[error("cannot unify statement {} to {} due to differing types", .0.to_string(), .1.to_string())]
+    TypeMismatch(&'a Statement, &'a Statement),
 }
