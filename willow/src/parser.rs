@@ -47,8 +47,6 @@
 //! Variable           -> var.
 //! ```
 
-use std::str::FromStr;
-
 use crate::logic::{Statement, Term};
 use nom::{
     self,
@@ -56,28 +54,13 @@ use nom::{
     bytes::complete::tag,
     character::complete::{char, multispace0, one_of},
     combinator::{opt, recognize},
-    error::{Error, ErrorKind, ParseError},
+    error::ParseError,
     multi::{many0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
-    Finish, IResult,
+    IResult,
 };
 
-impl FromStr for Statement {
-    type Err = Error<String>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parser_result = iff_expr(s);
-        match parser_result.finish() {
-            Err(err) => Err(Error::new(err.input.to_string(), err.code)),
-            Ok((leftover_text, statement)) => match leftover_text.len() {
-                0 => Ok(*statement),
-                _ => Err(Error::new(leftover_text.to_string(), ErrorKind::Fail)),
-            },
-        }
-    }
-}
-
-fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
+pub fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, (statement1, statement2)) = pair(implies_expr, optional_iff)(input)?;
     match statement2 {
         None => Ok((input, statement1)),
@@ -394,12 +377,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nom::error::{Error, ErrorKind};
 
     #[test]
     fn test_parser() {
         let statement: Statement = "   P and   Q  ".parse().unwrap();
         assert_eq!(
-            statement.to_string(),
+            statement,
             Statement::Conjunction(vec![
                 Statement::Atom {
                     predicate: "P".to_string(),
@@ -410,12 +394,11 @@ mod tests {
                     args: vec![]
                 }
             ])
-            .to_string()
         );
 
         let statement: Statement = "(A or B) implies (C and D)".parse().unwrap();
         assert_eq!(
-            statement.to_string(),
+            statement,
             Statement::Conditional(
                 Box::new(Statement::Disjunction(vec![
                     Statement::Atom {
@@ -438,12 +421,11 @@ mod tests {
                     }
                 ]))
             )
-            .to_string()
         );
 
         let statement: Statement = "F(x) or G(y)".parse().unwrap();
         assert_eq!(
-            statement.to_string(),
+            statement,
             Statement::Disjunction(vec![
                 Statement::Atom {
                     predicate: "F".to_string(),
@@ -454,12 +436,11 @@ mod tests {
                     args: vec![Term::var("y")]
                 }
             ])
-            .to_string()
         );
 
         let statement: Statement = "Node(x) and Node(parent(x))".parse().unwrap();
         assert_eq!(
-            statement.to_string(),
+            statement,
             Statement::Conjunction(vec![
                 Statement::Atom {
                     predicate: "Node".to_string(),
@@ -470,12 +451,11 @@ mod tests {
                     args: vec![Term::new("parent", vec![Term::var("x")])]
                 }
             ])
-            .to_string()
         );
 
         let statement: Statement = "forall x forall y ( P(x) and P(y) )".parse().unwrap();
         assert_eq!(
-            statement.to_string(),
+            statement,
             Statement::Universal {
                 var: "x".to_string(),
                 formula: Box::new(Statement::Universal {
@@ -492,13 +472,12 @@ mod tests {
                     ]))
                 })
             }
-            .to_string()
         );
 
         let statement1: Statement = "forall x exists y x < y".parse().unwrap();
         assert_eq!(
-            statement1.to_string(),
-            Box::new(Statement::Universal {
+            statement1,
+            Statement::Universal {
                 var: "x".to_string(),
                 formula: Box::new(Statement::Existential {
                     var: "y".to_string(),
@@ -507,12 +486,11 @@ mod tests {
                         args: vec![Term::var("x"), Term::var("y")]
                     })
                 })
-            })
-            .to_string()
+            }
         );
 
         let statement2: Statement = "forall x exists y(x < y)".parse().unwrap();
-        assert_eq!(statement1.to_string(), statement2.to_string());
+        assert_eq!(statement1, statement2);
 
         // Expected errors
         let statement: Result<Statement, _> = "a or b".parse();

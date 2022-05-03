@@ -1,11 +1,13 @@
-use crate::logic::term::{Substitution, Term, UnificationError};
+use crate::logic::term::{parser, Substitution, Term, UnificationError};
+use nom::Finish;
 use std::{
     collections::HashSet,
     fmt::{self, Display, Formatter},
+    str::FromStr,
 };
 
 /// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
     Atom {
         predicate: String,
@@ -27,8 +29,6 @@ pub enum Statement {
         formula: Box<Statement>,
     },
 }
-
-// For implementations, we can use the shorthand
 use Statement::*;
 
 impl Display for Statement {
@@ -74,6 +74,23 @@ impl Display for Statement {
             Universal { var, formula } => {
                 write!(f, "(∀{} {})", var, formula)
             }
+        }
+    }
+}
+
+impl FromStr for Statement {
+    type Err = nom::error::Error<String>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match parser::iff_expr(s).finish() {
+            Err(err) => Err(Self::Err::new(err.input.to_string(), err.code)),
+            Ok((leftover_text, statement)) => match leftover_text.len() {
+                0 => Ok(*statement),
+                _ => Err(Self::Err::new(
+                    leftover_text.to_string(),
+                    nom::error::ErrorKind::Fail,
+                )),
+            },
         }
     }
 }
@@ -124,11 +141,11 @@ impl Statement {
                 .into_iter()
                 .flat_map(|arg| arg.get_constants(bound_vars))
                 .collect(),
+            Contradiction | Tautology => HashSet::new(),
             Conjunction(operands) | Disjunction(operands) => operands
                 .iter()
                 .flat_map(|arg| arg.get_constants(bound_vars))
                 .collect(),
-            Contradiction | Tautology => HashSet::new(),
             Existential { var, formula } | Universal { var, formula } => {
                 let bound_vars = [bound_vars, &[var]].concat();
                 formula.get_constants(&bound_vars)

@@ -2,6 +2,7 @@ use crate::logic::Statement;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
+    iter,
 };
 
 /// An expression that is associated with an element of the universe of discourse under a variable
@@ -71,9 +72,9 @@ impl Term {
         self.args.len()
     }
 
-    /// Checks if this Term can unify with another Term.
+    /// Checks if this term can unify with another [Term].
     ///
-    /// Two Terms are unifiable if all constants match with the same name and arity, and each
+    /// Two terms are unifiable if all constants match with the same name and arity, and each
     /// variable unifies with at least one corresponding constant. Constants are treated as
     /// variables in this Term if they appear within the `vars` argument.
     ///
@@ -82,15 +83,15 @@ impl Term {
     /// ```
     /// use willow::logic::{Substitution, Term};
     ///
-    /// let term1 = Term::new("f", vec![Term::var("x"), Term::var("y")]);
-    /// let term2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
+    /// let term_1 = Term::new("f", vec![Term::var("x"), Term::var("y")]);
+    /// let term_2 = Term::new("f", vec![Term::var("x"), Term::var("z")]);
     ///
     /// let mut assignment = Substitution::new();
     /// let z = Term::var("z");
     /// assignment.insert("y", &z);
     ///
     /// assert_eq!(
-    ///     term1.unify_with(&term2, &["y"], Substitution::new()).unwrap(),
+    ///     term_1.unify_with(&term_2, &["y"], Substitution::new()).unwrap(),
     ///     assignment
     /// );
     /// ```
@@ -154,13 +155,15 @@ impl Term {
         Ok(assignment)
     }
 
-    /// Gets the set of constants used in this Term.
+    /// Returns a set of all constants that are in this statement.
     ///
-    /// Gathers the set of all constants within a Term. If any variables from the vars argument
-    /// appear within a Term, it is not considered a constant since its value may still vary.
+    /// A constant is an expression that represents an element in the universe of discourse.
+    /// `bound_vars` contains all variables that are bound to elements in the universe of discourse
+    /// through the use of logical quantifiers.
     ///
     /// # Examples
     ///
+    /// Functions whose arguments are constants are also constants:
     /// ```
     /// use willow::logic::Term;
     /// use std::collections::HashSet;
@@ -173,7 +176,7 @@ impl Term {
     ///     ],
     /// );
     ///
-    /// let constant_array = [
+    /// let constants = [
     ///     Term::new(
     ///         "f",
     ///         vec![
@@ -187,15 +190,14 @@ impl Term {
     ///     Term::var("y"),
     ///     Term::var("z"),
     /// ];
-    /// let mut constants = HashSet::new();
-    /// constants.extend(constant_array.iter());
     ///
-    /// assert_eq!(term.get_constants(&[]), constants);
+    /// assert_eq!(term.get_constants(&[]), constants.iter().collect());
     /// ```
     ///
+    /// If any arguments are bound variables (instead of constants), then the entire term is not a
+    /// constant:
     /// ```
     /// use willow::logic::Term;
-    /// use std::collections::HashSet;
     ///
     /// let term = Term::new(
     ///     "f",
@@ -205,34 +207,28 @@ impl Term {
     ///     ],
     /// );
     ///
-    /// let constant_array = [Term::var("y"), Term::var("z")];
-    /// let mut constants = HashSet::new();
-    /// constants.extend(constant_array.iter());
+    /// let constants = [Term::var("y"), Term::var("z")];
     ///
-    /// assert_eq!(term.get_constants(&["x"]), constants);
+    /// assert_eq!(term.get_constants(&["x"]), constants.iter().collect());
     /// ```
-    pub fn get_constants(&self, vars: &[&str]) -> HashSet<&Term> {
+    pub fn get_constants(&self, bound_vars: &[&str]) -> HashSet<&Term> {
         let mut constants = HashSet::new();
 
         if self.arity() == 0 {
-            if !vars.contains(&self.name.as_str()) {
+            // If this term is a free variable, then it is a constant
+            if !bound_vars.contains(&self.name.as_str()) {
                 constants.insert(self);
             }
         } else {
-            // This term is a function of subterms
+            // If this term is a function, then add the constants from each argument
+            constants.extend(
+                self.args
+                    .iter()
+                    .flat_map(|arg| arg.get_constants(bound_vars)),
+            );
 
-            // Add the constants from each of the arguments to the constants set
-            constants.extend(self.args.iter().flat_map(|arg| arg.get_constants(vars)));
-
-            // Count how many args are constants (appear in the constants set)
-            let num_const_args = self
-                .args
-                .iter()
-                .filter(|arg| constants.contains(arg))
-                .count();
-
-            // If this term is a function symbol made of constant arguments, then it is a constant
-            if num_const_args == self.arity() {
+            // If all of the arguments are constants, then the entire term is also a constant
+            if self.args.iter().all(|arg| constants.contains(arg)) {
                 constants.insert(self);
             }
         }
@@ -270,11 +266,11 @@ pub enum UnificationError<'a> {
     /// An error that occurs when a term cannot be unified with another term because they have
     /// different arities; e.g., if we try to unify a nullary function with a unary function
     #[error(
-        "cannot unify function {} with arity {} to function {} with arity {}",
-        .0.name,
+        "cannot unify {}-ary function {} with {}-ary function {}",
         .0.arity(),
-        .1.name,
-        .1.arity()
+        .0.name,
+        .1.arity(),
+        .1.name
     )]
     ArityMismatch(&'a Term, &'a Term),
     #[error("")]
