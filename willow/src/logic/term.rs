@@ -140,11 +140,11 @@ impl Term {
 
         // must exactly match `other` in name...
         if self.arity() != other.arity() {
-            return Err(UnificationError::ArityMismatch(self, other));
+            return Err(UnificationError::TermArityMismatch(self, other));
         }
         // ... and in arity
         if self.name != other.name {
-            return Err(UnificationError::NameMismatch(self, other));
+            return Err(UnificationError::TermNameMismatch(self, other));
         }
 
         // Unify each argument
@@ -263,6 +263,18 @@ pub type Substitution<'a> = HashMap<&'a str, &'a Term>;
 /// Errors that occur during unification of two statements.
 #[derive(Debug, thiserror::Error)]
 pub enum UnificationError<'a> {
+    #[error("")]
+    ConflictingAssignment {
+        var: &'a str,
+        old: &'a Term,
+        new: &'a Term,
+    },
+    #[error("cannot unify {}-ary function with {}-ary function", .0.len(), .1.len())]
+    PredicateArityMismatch(&'a Vec<Term>, &'a Vec<Term>),
+    #[error("cannot unify predicate {} with predicate {}", .0, .1)]
+    PredicateNameMismatch(&'a String, &'a String),
+    #[error("cannot unify {}-arg statement with {}-arg statement", .0.len(), .1.len())]
+    StatementArityMismatch(&'a Vec<Statement>, &'a Vec<Statement>),
     /// An error that occurs when a term cannot be unified with another term because they have
     /// different arities; e.g., if we try to unify a nullary function with a unary function
     #[error(
@@ -272,17 +284,11 @@ pub enum UnificationError<'a> {
         .1.arity(),
         .1.name
     )]
-    ArityMismatch(&'a Term, &'a Term),
-    #[error("")]
-    ConflictingAssignment {
-        var: &'a str,
-        old: &'a Term,
-        new: &'a Term,
-    },
+    TermArityMismatch(&'a Term, &'a Term),
     /// An error that occurs when a term cannot be unified with another term because they have
     /// different names (also referred to as "function symbols").
     #[error("cannot unify symbol {0} to symbol {1}")]
-    NameMismatch(&'a Term, &'a Term),
+    TermNameMismatch(&'a Term, &'a Term),
     /// An error that occurs when a statement cannot be unified with another statement because they
     /// have differing types (e.g. one is a Conjunction and one is a Disjunction)
     #[error("cannot unify statement {} to {} due to differing types", .0.to_string(), .1.to_string())]

@@ -1,4 +1,7 @@
-use crate::logic::term::{parser, Substitution, Term, UnificationError};
+use crate::{
+    logic::term::{Substitution, Term, UnificationError},
+    parser,
+};
 use nom::Finish;
 use std::{
     collections::HashSet,
@@ -7,7 +10,7 @@ use std::{
 };
 
 /// A logical statement in [first-order logic](https://en.wikipedia.org/wiki/First-order_logic).
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Statement {
     Atom {
         predicate: String,
@@ -96,11 +99,12 @@ impl FromStr for Statement {
 }
 
 impl Statement {
-    /// Returns a set of all constants that are in this statement.
+    /// Returns the set of all constants that are in this statement.
     ///
     /// A constant is an expression that represents an element in the universe of discourse.
-    /// `bound_vars` contains all variables that are bound to elements in the universe of discourse
-    /// through the use of logical quantifiers.
+    /// `bound_vars` represents the variables already bound in the universe of discourse through the
+    /// use of logical quantifiers. In other words, when a variable is in `bound_vars` it is not
+    /// eligible to be part of the set of constants for this statement.
     ///
     /// # Examples
     ///
@@ -154,7 +158,9 @@ impl Statement {
         }
     }
 
-    /// Returns true if this statement is a literal.
+    /// Determines if this statement is a literal.
+    ///
+    /// The function returns true if the statement is an atom or the negation of an atom.
     ///
     /// # Examples
     ///
@@ -192,6 +198,8 @@ impl Statement {
         }
     }
 
+    /// Unifies this statement with another by "substituting" free variables from `self` with bound
+    /// variables from `other`.
     pub fn unify_with<'a>(
         &'a self,
         other: &'a Self,
@@ -217,11 +225,13 @@ impl Statement {
                 },
             ) => {
                 if predicate1 != predicate2 {
-                    return Err(UnificationError::NameMismatch(predicate1, predicate2));
+                    return Err(UnificationError::PredicateNameMismatch(
+                        predicate1, predicate2,
+                    ));
                 }
 
                 if args1.len() != args2.len() {
-                    return Err(UnificationError::ArityMismatch(args1, args2));
+                    return Err(UnificationError::PredicateArityMismatch(args1, args2));
                 }
 
                 for (arg1, arg2) in args1.iter().zip(args2) {
@@ -239,7 +249,9 @@ impl Statement {
             (Conjunction(operands1), Conjunction(operands2))
             | (Disjunction(operands1), Disjunction(operands2)) => {
                 if operands1.len() != operands2.len() {
-                    return Err(UnificationError::ArityMismatch(self, other));
+                    return Err(UnificationError::StatementArityMismatch(
+                        operands1, operands2,
+                    ));
                 }
 
                 for (operand1, operand2) in operands1.iter().zip(operands2) {
