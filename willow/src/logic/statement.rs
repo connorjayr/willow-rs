@@ -213,6 +213,9 @@ impl Statement {
         vars: &mut Vec<&'a str>,
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
+        todo!()
+
+        /*
         match (self, other) {
             (
                 Atom {
@@ -297,5 +300,6 @@ impl Statement {
             }
             _ => Err(UnificationError::TypeMismatch(self, other)),
         }
+        */
     }
 }

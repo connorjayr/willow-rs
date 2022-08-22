@@ -1,7 +1,6 @@
 use crate::logic::Statement;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 
 type NodeId = usize;
 
@@ -11,7 +10,7 @@ pub enum TreeError {
     NodeDoesNotExist { id: NodeId },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Node {
     /// A unique, numerical identifier for this node.
     id: NodeId,
@@ -21,7 +20,7 @@ pub struct Node {
     parent: Option<NodeId>,
     /// The children of this node.
     children: Vec<NodeId>,
-    /// The logical statement for this node.
+    /// The logical statement in this node.
     statement: Result<Statement, <Statement as FromStr>::Err>,
     /// Indicates if this node is a premise; i.e., it is assumed to be valid in a truth tree.
     premise: bool,
@@ -41,13 +40,28 @@ impl Node {
     pub fn id(&self) -> NodeId {
         self.id
     }
+
+    pub fn children(&self) -> &[usize] {
+        &self.children
+    }
 }
 
 #[derive(Debug)]
 pub struct TruthTree {
+    /// Maps the ID of a node to the node itself.
     nodes: HashMap<NodeId, Node>,
+    // The ID of the root node.
     root: NodeId,
+    // The next highest unused ID.
     next_node_id: NodeId,
+}
+
+impl PartialEq for TruthTree {
+    fn eq(&self, other: &Self) -> bool {
+        // `self.next_node_id` is just a counter used to efficiently add nodes, so it does not
+        // affect equality
+        self.nodes == other.nodes && self.root == other.root
+    }
 }
 
 impl TruthTree {
@@ -55,22 +69,18 @@ impl TruthTree {
     ///
     /// Truth trees must have at least one node, so this constructs a new tree with an empty root
     /// node.
-    pub fn new() -> Arc<Mutex<Self>> {
+    pub fn new() -> Self {
         let root_id = 0;
-        let tree = Self {
-            nodes: HashMap::new(),
+        let root = Node::new(root_id);
+
+        let mut nodes = HashMap::new();
+        nodes.insert(root_id, root);
+
+        Self {
+            nodes,
             root: root_id,
             next_node_id: root_id + 1,
-        };
-        let tree = Arc::new(Mutex::new(tree));
-
-        let root = Node::new(root_id);
-        {
-            let mut tree = tree.lock().unwrap();
-            tree.nodes.insert(root_id, root);
         }
-
-        tree
     }
 
     /// Adds an empty node to this truth tree.
@@ -101,14 +111,15 @@ impl TruthTree {
 
     /// Adds an empty child to a node in this truth tree.
     pub fn add_child(&mut self, parent_id: NodeId) -> Result<(), TreeError> {
+        if !self.nodes.contains_key(&parent_id) {
+            return Err(TreeError::NodeDoesNotExist { id: parent_id });
+        }
+
         let mut child = self.add_node();
         let child_id = child.id;
         child.parent = Some(parent_id);
 
-        let parent = match self.nodes.get_mut(&parent_id) {
-            Some(parent) => parent,
-            None => return Err(TreeError::NodeDoesNotExist { id: parent_id }),
-        };
+        let parent = self.nodes.get_mut(&parent_id).unwrap();
         parent.children.push(child_id);
 
         Ok(())
@@ -125,6 +136,16 @@ impl TruthTree {
         todo!()
     }
 
+    /// Returns a reference to the node with the given id, if it exists.
+    pub fn get_node(&self, id: usize) -> Option<&Node> {
+        self.nodes.get(&id)
+    }
+
+    /// Returns a mutable reference to the node with the given id, if it exists.
+    pub fn get_node_mut(&mut self, id: usize) -> Option<&mut Node> {
+        self.nodes.get_mut(&id)
+    }
+
     /// Returns a reference to the root node of this tree.
     pub fn root(&self) -> &Node {
         self.nodes.get(&self.root).unwrap()
@@ -133,5 +154,11 @@ impl TruthTree {
     /// Returns the number of nodes in this tree.
     pub fn size(&self) -> usize {
         self.nodes.len()
+    }
+}
+
+impl Default for TruthTree {
+    fn default() -> Self {
+        Self::new()
     }
 }

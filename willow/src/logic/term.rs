@@ -2,7 +2,6 @@ use crate::logic::Statement;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
-    iter,
 };
 
 /// An expression that is associated with an element of the universe of discourse under a variable
@@ -16,7 +15,7 @@ pub struct Term {
 }
 
 impl Term {
-    /// Constructs a new [Term].
+    /// Constructs a new [`Term`].
     ///
     /// # Examples
     ///
@@ -72,11 +71,15 @@ impl Term {
         self.args.len()
     }
 
-    /// Checks if this term can unify with another [Term].
+    /// Attempts to unify this term with another [`Term`].
     ///
     /// Two terms are unifiable if all constants match with the same name and arity, and each
     /// variable unifies with at least one corresponding constant. Constants are treated as
     /// variables in this Term if they appear within the `vars` argument.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this term cannot be unified with `other`.
     ///
     /// # Examples
     ///
