@@ -10,6 +10,12 @@ pub enum TreeError {
     NodeDoesNotExist { id: NodeId },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum NodeError {
+    #[error("the text cannot be parsed into a logical statement")]
+    Unparsable,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Node {
     /// A unique, numerical identifier for this node.
@@ -127,7 +133,23 @@ impl TruthTree {
 
     /// Determines whether this node is valid; i.e. this node's statement is a logical consequence
     /// of some other node's statement in the truth tree.
-    pub fn is_node_logically_valid(&self, node_id: NodeId) -> Result<(), TreeError> {
+    pub fn is_node_logically_valid(&self, node: &Node) -> Result<(), NodeError> {
+        let statement = match &node.statement {
+            Ok(stmt) => stmt,
+            Err(_) => {
+                // If the text is not parsable then it's not a logical statement. Thus we consider
+                // it not logically valid. Note that this is a MIGRATION DIFF.
+
+                // TODO: do we want to do anything with the parsing error?
+                return Err(NodeError::Unparsable);
+            }
+        };
+
+        if node.premise {
+            // By definition, premises are logically valid without any necessary other context.
+            return Ok(());
+        }
+
         todo!()
     }
 

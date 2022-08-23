@@ -85,15 +85,11 @@ impl FromStr for Statement {
     type Err = nom::error::Error<String>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match parser::iff_expr(s).finish() {
+        match parser::start(s).finish() {
             Err(err) => Err(Self::Err::new(err.input.to_string(), err.code)),
-            Ok((leftover_text, statement)) => match leftover_text.len() {
-                0 => Ok(*statement),
-                _ => Err(Self::Err::new(
-                    leftover_text.to_string(),
-                    nom::error::ErrorKind::Fail,
-                )),
-            },
+            // parser::start uses the all_consuming combinator, meaning that it will only return a
+            // success variant iff it consumes all text
+            Ok((_, statement)) => Ok(*statement),
         }
     }
 }
@@ -213,9 +209,6 @@ impl Statement {
         vars: &mut Vec<&'a str>,
         mut assignment: Substitution<'a>,
     ) -> Result<Substitution<'a>, UnificationError<'a>> {
-        todo!()
-
-        /*
         match (self, other) {
             (
                 Atom {
@@ -300,6 +293,5 @@ impl Statement {
             }
             _ => Err(UnificationError::TypeMismatch(self, other)),
         }
-        */
     }
 }

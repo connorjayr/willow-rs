@@ -19,6 +19,9 @@
 //! total number of statements that can be accepted by the language.
 //!
 //! ```text
+//! Start              -> contradiction
+//!                     | tautology
+//!                     | Iff.
 //! Iff                -> Implies NullableIff.
 //! NullableIff        -> iff Implies NullableIff
 //!                     | .
@@ -34,7 +37,7 @@
 //! Unary              -> not Unary
 //!                     | forall Variable Unary
 //!                     | exists Variable Unary
-//!                     | ( Binary )
+//!                     | ( Iff )
 //!                     | Predicate.
 //! Predicate          -> predicate TermTail
 //!                     | Term symbol Term.
@@ -53,12 +56,17 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{char, multispace0, one_of},
-    combinator::{opt, recognize},
+    combinator::{all_consuming, opt, recognize},
     error::ParseError,
     multi::{many0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
     IResult,
 };
+
+pub fn start(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, statement) = all_consuming(alt((contradiction, tautology, iff_expr)))(input)?;
+    Ok((input, statement))
+}
 
 pub fn iff_expr(input: &str) -> IResult<&str, Box<Statement>> {
     let (input, (statement1, statement2)) = pair(implies_expr, optional_iff)(input)?;
@@ -353,6 +361,16 @@ fn acceptable_char0(input: &str) -> IResult<&str, &str> {
 
 fn operator(input: &str) -> IResult<&str, &str> {
     recognize(one_of("<>="))(input)
+}
+
+fn tautology(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, _) = ws(tag("⊤"))(input)?;
+    Ok((input, Box::new(Statement::Tautology)))
+}
+
+fn contradiction(input: &str) -> IResult<&str, Box<Statement>> {
+    let (input, _) = ws(tag("⊥"))(input)?;
+    Ok((input, Box::new(Statement::Contradiction)))
 }
 
 fn lowercase_alpha(input: &str) -> IResult<&str, char> {
